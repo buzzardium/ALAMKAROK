@@ -158,7 +158,7 @@
       </section>
 
       <section class="main-section private-section card gap private-card">
-        <div class="section-title section-toggle"><button class="section-heading" id="togglePrivate" data-collapse="private" aria-expanded="${state.privateCollapsed?'false':'true'}"><span class="section-label">MY LIST <span class="section-private">PRIVATE</span></span><span class="chevron" aria-hidden="true">${state.privateCollapsed?'▼':'▲'}</span></button><button class="btn" id="privateSelectAll">Select All</button></div>
+        <div class="section-title section-toggle"><button class="section-heading" id="togglePrivate" data-collapse="private" aria-expanded="${state.privateCollapsed?'false':'true'}"><span class="section-label">MY LIST <span class="section-private">— PRIVATE</span></span><span class="chevron" aria-hidden="true">${state.privateCollapsed?'▼':'▲'}</span></button><button class="btn" id="privateSelectAll">Select All</button></div>
                 <div id="privateBody" class="collapsible-body ${state.privateCollapsed?'collapsed':''}" aria-hidden="${state.privateCollapsed?'true':'false'}"><div class="row"><input class="input" id="privateUrl" placeholder="Paste a YouTube video or playlist link" inputmode="url"><button class="btn primary" id="privateAdd">Add to My List</button></div><div class="small private-help">Build your own list first. Select one, several, or all songs, then send them to the shared queue.</div><div class="queue" id="privateList"></div><div class="private-actions"><button class="btn green" id="uploadSelected">Upload Selected</button><button class="btn" id="uploadAll">Upload All</button></div></div>
       </section>
 
