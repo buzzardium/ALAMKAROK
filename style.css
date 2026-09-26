@@ -1063,3 +1063,69 @@ body{
   .end-preview-item span:first-child{font-size:12px!important}
   .end-preview-count{font-size:13px!important;margin-top:9px!important;padding-top:8px!important}
 }
+
+/* FINAL PRIVATE PLAYLIST ROW FIX — compact single-line controls */
+.private-item{
+  display:grid!important;
+  grid-template-columns:24px 30px 56px minmax(0,1fr) max-content!important;
+  align-items:center!important;
+  gap:10px!important;
+  min-height:58px!important;
+  height:auto!important;
+  padding:8px 10px!important;
+}
+.private-item > .private-check{margin:0!important;justify-self:center!important}
+.private-item > .qnum{justify-self:center!important}
+.private-item > .thumb{width:56px!important;height:40px!important;object-fit:cover!important}
+.private-item > .min0{min-width:0!important;width:100%!important}
+.private-item > .actions.queue-actions{
+  display:flex!important;
+  flex-wrap:nowrap!important;
+  align-items:center!important;
+  justify-content:flex-end!important;
+  gap:6px!important;
+  width:max-content!important;
+  min-width:max-content!important;
+  white-space:nowrap!important;
+}
+.private-item > .actions.queue-actions .action-sm{
+  flex:0 0 32px!important;
+  width:32px!important;
+  min-width:32px!important;
+  max-width:32px!important;
+  height:32px!important;
+  min-height:32px!important;
+  padding:0!important;
+  display:grid!important;
+  place-items:center!important;
+}
+@media(max-width:780px){
+  .private-item{
+    grid-template-columns:22px 28px 48px minmax(0,1fr) max-content!important;
+    gap:7px!important;
+    min-height:50px!important;
+    padding:7px 8px!important;
+  }
+  .private-item > .thumb{width:48px!important;height:34px!important}
+  .private-item > .actions.queue-actions{gap:4px!important}
+  .private-item > .actions.queue-actions .action-sm{
+    flex-basis:28px!important;width:28px!important;min-width:28px!important;max-width:28px!important;
+    height:28px!important;min-height:28px!important;
+    font-size:12px!important;
+  }
+  .private-item .qtitle{font-size:12px!important}
+  .private-item .meta{font-size:9px!important}
+}
+@media(max-width:430px){
+  .private-item{
+    grid-template-columns:20px 26px 44px minmax(0,1fr) max-content!important;
+    gap:5px!important;
+    padding:6px!important;
+  }
+  .private-item > .thumb{width:44px!important;height:31px!important}
+  .private-item > .actions.queue-actions{gap:3px!important}
+  .private-item > .actions.queue-actions .action-sm{
+    flex-basis:26px!important;width:26px!important;min-width:26px!important;max-width:26px!important;
+    height:26px!important;min-height:26px!important;font-size:11px!important;
+  }
+}
