@@ -206,55 +206,66 @@
     lists.forEach(({el,type})=>{
       if(!el)return;
       el.querySelectorAll('[data-drag-type]').forEach(item=>{
-        item.addEventListener('dragstart',e=>{
-          state.drag={type,id:item.dataset.dragId};
-          item.classList.add('dragging');
-          e.dataTransfer.effectAllowed='move';
-          e.dataTransfer.setData('text/plain',item.dataset.dragId);
-        });
-        item.addEventListener('dragend',()=>{state.drag={type:null,id:null};item.classList.remove('dragging');el.querySelectorAll('.drag-over').forEach(x=>x.classList.remove('drag-over'));});
-        item.addEventListener('dragover',e=>{
-          if(state.drag.type!==type||state.drag.id===item.dataset.dragId)return;
-          e.preventDefault(); e.dataTransfer.dropEffect='move';
-          el.querySelectorAll('.drag-over').forEach(x=>x.classList.remove('drag-over')); item.classList.add('drag-over');
-        });
-        item.addEventListener('dragleave',()=>item.classList.remove('drag-over'));
-        item.addEventListener('drop',async e=>{
-          e.preventDefault();
-          const id=state.drag.id; item.classList.remove('drag-over'); state.drag={type:null,id:null};
-          if(!id||id===item.dataset.dragId)return;
-          if(type==='shared') await reorderQueueByDrop(id,item.dataset.dragId); else reorderPrivateByDrop(id,item.dataset.dragId);
-        });
+        item.draggable=false;
         enablePointerDrag(item,el,type);
       });
     });
   }
-  function enablePointerDrag(item, list, type){
+
+  function enablePointerDrag(item,list,type){
     const handle=item.querySelector('.drag-handle'); if(!handle)return;
-    let timer=null, active=false, pointerId=null;
-    const cleanup=()=>{clearTimeout(timer);timer=null;active=false;pointerId=null;item.classList.remove('dragging');list.querySelectorAll('.drag-over').forEach(x=>x.classList.remove('drag-over'));};
-    handle.addEventListener('pointerdown',e=>{
-      if(e.pointerType==='mouse')return;
-      pointerId=e.pointerId;
-      timer=setTimeout(()=>{active=true;item.classList.add('dragging');try{handle.setPointerCapture(pointerId);}catch(_){}},280);
-    });
-    handle.addEventListener('pointermove',e=>{
-      if(!active)return;
+    let pointerId=null, startX=0, startY=0, active=false, timer=null;
+    const clearOver=()=>list.querySelectorAll('.drag-over').forEach(x=>x.classList.remove('drag-over'));
+    const cleanup=()=>{
+      clearTimeout(timer); timer=null;
+      if(pointerId!==null){try{handle.releasePointerCapture(pointerId);}catch(_){} }
+      pointerId=null; active=false;
+      item.classList.remove('dragging'); clearOver();
+      state.drag={type:null,id:null};
+      document.removeEventListener('pointermove',onMove,true);
+      document.removeEventListener('pointerup',onUp,true);
+      document.removeEventListener('pointercancel',onCancel,true);
+    };
+    const begin=()=>{
+      if(active)return;
+      active=true; state.drag={type,id:item.dataset.dragId};
+      item.classList.add('dragging');
+      try{handle.setPointerCapture(pointerId);}catch(_){}
+    };
+    const onMove=(e)=>{
+      if(e.pointerId!==pointerId)return;
+      const dx=e.clientX-startX,dy=e.clientY-startY;
+      if(!active){
+        if(Math.hypot(dx,dy)<6)return;
+        clearTimeout(timer); timer=null; begin();
+      }
       e.preventDefault();
       const target=document.elementFromPoint(e.clientX,e.clientY)?.closest('[data-drag-type]');
-      list.querySelectorAll('.drag-over').forEach(x=>x.classList.remove('drag-over'));
-      if(target&&target!==item&&target.dataset.dragType===type)target.classList.add('drag-over');
-    });
-    handle.addEventListener('pointerup',async e=>{
-      if(!active){cleanup();return;}
-      e.preventDefault();
-      const target=document.elementFromPoint(e.clientX,e.clientY)?.closest('[data-drag-type]');
-      const fromId=item.dataset.dragId, toId=target?.dataset.dragId;
+      clearOver();
+      if(target&&target!==item&&target.parentElement===list&&target.dataset.dragType===type)target.classList.add('drag-over');
+    };
+    const onUp=async(e)=>{
+      if(e.pointerId!==pointerId)return;
+      const wasActive=active;
+      const target=wasActive?document.elementFromPoint(e.clientX,e.clientY)?.closest('[data-drag-type]'):null;
+      const fromId=item.dataset.dragId;
+      const toId=(target&&target.parentElement===list&&target.dataset.dragType===type)?target.dataset.dragId:null;
       cleanup();
+      if(!wasActive)return;
       if(!toId||toId===fromId)return;
-      if(type==='shared')await reorderQueueByDrop(fromId,toId);else reorderPrivateByDrop(fromId,toId);
+      if(type==='shared')await reorderQueueByDrop(fromId,toId); else reorderPrivateByDrop(fromId,toId);
+    };
+    const onCancel=(e)=>{if(e.pointerId===pointerId)cleanup();};
+    handle.addEventListener('pointerdown',e=>{
+      if(e.button!==undefined&&e.button!==0)return;
+      pointerId=e.pointerId; startX=e.clientX; startY=e.clientY;
+      e.preventDefault();
+      if(e.pointerType==='mouse') begin();
+      else timer=setTimeout(begin,180);
+      document.addEventListener('pointermove',onMove,true);
+      document.addEventListener('pointerup',onUp,true);
+      document.addEventListener('pointercancel',onCancel,true);
     });
-    handle.addEventListener('pointercancel',cleanup);
   }
   function reorderPrivateByDrop(fromId,toId){
     const from=state.privateList.findIndex(x=>x.id===fromId), to=state.privateList.findIndex(x=>x.id===toId);
