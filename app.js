@@ -443,7 +443,7 @@
             else state.player.cueVideoById({videoId:state.room.current_video_id,startSeconds:p});
           },
           onStateChange:async e=>{
-            if(e.data===YT.PlayerState.ENDED){showEndPreview();await advanceAfterEnd();}
+            if(e.data===YT.PlayerState.ENDED){await advanceAfterEnd();showEndPreview();}
             else if(e.data===YT.PlayerState.PLAYING){
               state.room.is_playing=true;state.room.position_seconds=currentTime();await broadcast('room',{is_playing:true,position_seconds:state.room.position_seconds});
             }else if(e.data===YT.PlayerState.PAUSED){
