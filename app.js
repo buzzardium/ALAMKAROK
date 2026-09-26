@@ -6,7 +6,7 @@
   const colors = ['#9b5cff','#28a8ff','#18c9a0','#ff9d2e','#ff4f5f','#f1d21b','#ef67c7','#7bd66f','#54d8e8','#ff6f9c'];
   const state = {
     room:null, me:null, people:[], queue:[], isHost:false, channel:null,
-    player:null, playerReady:false, ytReady:false, currentPosition:0, busy:false
+    player:null, playerReady:false, ytReady:false, ytLoading:false, currentPosition:0, busy:false
   };
 
   function esc(v){ return String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -119,26 +119,41 @@
     const client=getClient();
     state.channel=client.channel(`alamkarok-${state.room.id}`,{config:{broadcast:{self:true},presence:{key:state.me.id}}});
     state.channel.on('broadcast',{event:'command'},({payload})=>handleCommandBroadcast(payload))
-      .on('broadcast',{event:'queue'},({payload})=>{state.queue=payload.queue||[];renderRoom();})
-      .on('broadcast',{event:'people'},({payload})=>{state.people=payload.people||[];renderRoom();})
-      .on('broadcast',{event:'room'},({payload})=>{state.room={...state.room,...payload};renderRoom();})
+      .on('broadcast',{event:'queue'},({payload})=>{state.queue=payload.queue||[];updateRoomView();})
+      .on('broadcast',{event:'people'},({payload})=>{state.people=payload.people||[];updateRoomView();})
+      .on('broadcast',{event:'room'},({payload})=>{state.room={...state.room,...payload};updateRoomView();})
       .on('postgres_changes',{event:'*',schema:'public',table:'participants',filter:`room_id=eq.${state.room.id}`},refreshPeople)
       .on('postgres_changes',{event:'*',schema:'public',table:'queue_items',filter:`room_id=eq.${state.room.id}`},refreshQueue)
       .on('postgres_changes',{event:'UPDATE',schema:'public',table:'rooms',filter:`id=eq.${state.room.id}`},refreshRoom)
       .subscribe(status=>{if(status==='CHANNEL_ERROR')notify('Real-time connection failed. Refresh to reconnect.','error');});
   }
-  async function refreshPeople(){const r=await getClient().from('participants').select('*').eq('room_id',state.room.id).order('created_at',{ascending:true});if(!r.error){state.people=r.data||[];renderRoom();}}
-  async function refreshQueue(){const r=await getClient().from('queue_items').select('*').eq('room_id',state.room.id).order('position',{ascending:true});if(!r.error){state.queue=r.data||[];renderRoom();}}
-  async function refreshRoom(){const r=await getClient().from('rooms').select('*').eq('id',state.room.id).single();if(!r.error){state.room=r.data;renderRoom();}}
+  async function refreshPeople(){const r=await getClient().from('participants').select('*').eq('room_id',state.room.id).order('created_at',{ascending:true});if(!r.error){state.people=r.data||[];updateRoomView();}}
+  async function refreshQueue(){const r=await getClient().from('queue_items').select('*').eq('room_id',state.room.id).order('position',{ascending:true});if(!r.error){state.queue=r.data||[];updateRoomView();}}
+  async function refreshRoom(){const r=await getClient().from('rooms').select('*').eq('id',state.room.id).single();if(!r.error){state.room=r.data;updateRoomView();if(state.isHost&&state.room.current_video_id)ensureYouTubePlayer();}}
   async function broadcast(event,payload){if(state.channel) await state.channel.send({type:'broadcast',event,payload});}
 
   function renderRoom(){
     const current=state.room.current_video_id;const q=state.queue;
-    app.innerHTML=`<div class="wrap"><div class="top"><div><div class="brand">ALAMKAROK</div><div class="small">Room <b>${esc(state.room.code)}</b> · ${state.people.length} people</div></div><div class="actions"><span class="badge"><span class="dot" style="background:${esc(state.me.color)}"></span>${esc(state.me.name)}</span><button class="btn" id="showQr">QR</button></div></div>
-      <div class="roomgrid"><section><div class="card"><div class="player"><div id="player" class="playerbox"><div class="playerplaceholder">${state.isHost?'Loading YouTube player…':'Host is playing the video on their phone'}</div></div></div><div class="controls"><button class="control" id="prev" title="Previous">⏮</button><button class="control main" id="play" title="Play/Pause">${state.room.is_playing?'❚❚':'▶'}</button><button class="control" id="next" title="Next">⏭</button></div><div class="small center" id="playState">${state.room.is_playing?'Playing':'Paused'} · ${current?'Video selected':'No video selected'}</div></div>
-      <div class="card gap"><div class="section-title"><h2>Shared Queue <span class="muted">(${q.length})</span></h2><button class="btn green" id="shuffle">🔀 Shuffle</button></div><div class="row"><input class="input" id="url" placeholder="Paste a YouTube link" inputmode="url"><button class="btn primary" id="add">Add to Queue</button></div><div class="queue">${q.length?q.map((x,i)=>`<div class="qitem ${x.video_id===current?'now':''}"><div class="qnum">${i+1}</div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.video_id===current?'NOW PLAYING · ':''}${esc(personName(x.added_by))}</div></div><div class="actions">${x.video_id!==current||state.isHost?`<button class="action-sm" data-play="${esc(x.id)}">Play</button>`:''}<button class="action-sm danger-sm" data-del="${esc(x.id)}">×</button></div></div>`).join(''):'<div class="empty">No videos yet. Add the first YouTube link.</div>'}</div></div></section>
-      <aside><div class="card"><div class="section-title"><h2>People in Room</h2><span class="badge">${state.isHost?'HOST':'GUEST'}</span></div><div class="people">${state.people.map(p=>`<div class="person"><span class="dot" style="background:${esc(p.color)}"></span><span>${esc(p.name)}${p.id===state.me.id?' <span class="muted">(You)</span>':''}${p.user_id===state.room.host_id?' 👑':''}</span></div>`).join('')}</div></div><div class="card gap"><div class="section-title"><h2>Room QR</h2></div><div id="qr" class="qr"></div><div class="small center">Scan to join</div><div class="linkbox">${esc(roomUrl(state.room.code))}</div></div></aside></div><div class="footer">Everyone can add links and control playback. Only the host displays YouTube.</div></div>`;
+    app.innerHTML=`<div class="wrap room-screen"><div class="top"><div><div class="brand">ALAMKAROK</div><div class="small">Room <b>${esc(state.room.code)}</b> · <span id="peopleCount">${state.people.length}</span> people</div></div><div class="actions"><span class="badge"><span class="dot" style="background:${esc(state.me.color)}"></span>${esc(state.me.name)}</span><button class="btn" id="showQr">QR</button></div></div>
+      <div class="roomgrid"><section><div class="card"><div class="player"><div id="player" class="playerbox"><div class="playerplaceholder" id="playerPlaceholder">${state.isHost?(current?'Loading YouTube player…':'Add a YouTube video to start playback.'):'Host is playing the video on their phone'}</div></div></div><div class="controls"><button class="control" id="prev" title="Previous">⏮</button><button class="control main" id="play" title="Play/Pause">${state.room.is_playing?'❚❚':'▶'}</button><button class="control" id="next" title="Next">⏭</button></div><div class="small center" id="playState">${state.room.is_playing?'Playing':'Paused'} · ${current?'Video selected':'No video selected'}</div></div>
+      <div class="card gap"><div class="section-title"><h2>Shared Queue <span class="muted">(<span id="queueCount">${q.length}</span>)</span></h2><button class="btn green" id="shuffle">🔀 Shuffle</button></div><div class="row"><input class="input" id="url" placeholder="Paste a YouTube link" inputmode="url"><button class="btn primary" id="add">Add to Queue</button></div><div class="queue" id="queueList">${q.length?q.map((x,i)=>`<div class="qitem ${x.video_id===current?'now':''}"><div class="qnum">${i+1}</div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.video_id===current?'NOW PLAYING · ':''}${esc(personName(x.added_by))}</div></div><div class="actions">${x.video_id!==current||state.isHost?`<button class="action-sm" data-play="${esc(x.id)}">Play</button>`:''}<button class="action-sm danger-sm" data-del="${esc(x.id)}">×</button></div></div>`).join(''):'<div class="empty">No videos yet. Add the first YouTube link.</div>'}</div></div></section>
+      <aside><div class="card"><div class="section-title"><h2>People in Room</h2><span class="badge">${state.isHost?'HOST':'GUEST'}</span></div><div class="people" id="peopleList">${state.people.map(p=>`<div class="person"><span class="dot" style="background:${esc(p.color)}"></span><span>${esc(p.name)}${p.id===state.me.id?' <span class="muted">(You)</span>':''}${p.user_id===state.room.host_id?' 👑':''}</span></div>`).join('')}</div></div><div class="card gap"><div class="section-title"><h2>Room QR</h2></div><div id="qr" class="qr"></div><div class="small center">Scan to join</div><div class="linkbox">${esc(roomUrl(state.room.code))}</div></div></aside></div><div class="footer">Everyone can add links and control playback. Only the host displays YouTube.</div></div>`;
     bindRoomControls();
+    if(state.isHost&&state.room.current_video_id)ensureYouTubePlayer();
+  }
+
+  function updateRoomView(){
+    if(!document.querySelector('.room-screen')){renderRoom();return;}
+    const current=state.room.current_video_id,q=state.queue;
+    const count=document.getElementById('peopleCount');if(count)count.textContent=state.people.length;
+    const qc=document.getElementById('queueCount');if(qc)qc.textContent=q.length;
+    const stateEl=document.getElementById('playState');if(stateEl)stateEl.textContent=`${state.room.is_playing?'Playing':'Paused'} · ${current?'Video selected':'No video selected'}`;
+    const play=document.getElementById('play');if(play)play.textContent=state.room.is_playing?'❚❚':'▶';
+    const list=document.getElementById('queueList');
+    if(list)list.innerHTML=q.length?q.map((x,i)=>`<div class="qitem ${x.video_id===current?'now':''}"><div class="qnum">${i+1}</div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.video_id===current?'NOW PLAYING · ':''}${esc(personName(x.added_by))}</div></div><div class="actions">${x.video_id!==current||state.isHost?`<button class="action-sm" data-play="${esc(x.id)}">Play</button>`:''}<button class="action-sm danger-sm" data-del="${esc(x.id)}">×</button></div></div>`).join(''):'<div class="empty">No videos yet. Add the first YouTube link.</div>';
+    if(list){list.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>removeItem(b.dataset.del));list.querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>playQueueItem(b.dataset.play));}
+    const people=document.getElementById('peopleList');if(people)people.innerHTML=state.people.map(p=>`<div class="person"><span class="dot" style="background:${esc(p.color)}"></span><span>${esc(p.name)}${p.id===state.me.id?' <span class="muted">(You)</span>':''}${p.user_id===state.room.host_id?' 👑':''}</span></div>`).join('');
+    if(state.isHost&&current)ensureYouTubePlayer();
   }
   function bindRoomControls(){
     document.getElementById('add').onclick=addLink;document.getElementById('shuffle').onclick=shuffleQueue;document.getElementById('prev').onclick=()=>sendCommand('previous');document.getElementById('next').onclick=()=>sendCommand('next');document.getElementById('play').onclick=()=>sendCommand(state.room.is_playing?'pause':'play');document.getElementById('showQr').onclick=showQrModal;
@@ -149,7 +164,7 @@
   function showQrModal(){const back=document.createElement('div');back.className='modalback';back.innerHTML=`<div class="modal center"><div class="brand">ALAMKAROK</div><h2>Join Room</h2><div id="modalQr" class="qr"></div><div class="code">${esc(state.room.code)}</div><div class="linkbox">${esc(roomUrl(state.room.code))}</div><button class="btn primary wide" id="closeQr">Close</button></div>`;document.body.appendChild(back);if(window.QRCode)new QRCode(document.getElementById('modalQr'),{text:roomUrl(state.room.code),width:220,height:220});back.querySelector('#closeQr').onclick=()=>back.remove();}
   function personName(id){const p=state.people.find(x=>x.id===id);return p?p.name:'Unknown';}
 
-  async function addLink(){if(state.busy)return;const input=document.getElementById('url');const id=ytId(input.value.trim());if(!id)return notify('Enter a valid YouTube link.','error');state.busy=true;try{let title='YouTube video';try{const r=await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${encodeURIComponent(id)}&format=json`);if(r.ok){const j=await r.json();if(j.title)title=j.title;}}catch(_){}const pos=state.queue.length?Math.max(...state.queue.map(x=>x.position))+1:0;const r=await getClient().from('queue_items').insert({room_id:state.room.id,video_id:id,title,thumbnail:ytThumb(id),added_by:state.me.id,position:pos}).select().single();if(r.error)throw r.error;input.value='';await refreshQueue();await broadcast('queue',{queue:state.queue});notify('Added to the shared queue');}catch(e){notify(e.message||'Could not add video','error');}finally{state.busy=false;}}
+  async function addLink(){if(state.busy)return;const input=document.getElementById('url');const id=ytId(input.value.trim());if(!id)return notify('Enter a valid YouTube link.','error');state.busy=true;try{let title='YouTube video';try{const r=await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${encodeURIComponent(id)}&format=json`);if(r.ok){const j=await r.json();if(j.title)title=j.title;}}catch(_){}const pos=state.queue.length?Math.max(...state.queue.map(x=>x.position))+1:0;const r=await getClient().from('queue_items').insert({room_id:state.room.id,video_id:id,title,thumbnail:ytThumb(id),added_by:state.me.id,position:pos}).select().single();if(r.error)throw r.error;input.value='';await refreshQueue();await broadcast('queue',{queue:state.queue});if(state.isHost&&!state.room.current_video_id)await performPlayback('load',id,0,true);notify('Added to the shared queue');}catch(e){notify(e.message||'Could not add video','error');}finally{state.busy=false;}}
   async function removeItem(id){const r=await getClient().from('queue_items').delete().eq('id',id);if(r.error)return notify(r.error.message,'error');await normalizePositions();await refreshQueue();await broadcast('queue',{queue:state.queue});}
   async function normalizePositions(){for(let i=0;i<state.queue.length;i++){const r=await getClient().from('queue_items').update({position:i}).eq('id',state.queue[i].id);if(r.error)break;}}
   async function shuffleQueue(){if(state.queue.length<2)return notify('Add at least two videos to shuffle.');const current=state.room.current_video_id;const currentItem=state.queue.find(x=>x.video_id===current);let rest=state.queue.filter(x=>x.video_id!==current);for(let i=rest.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[rest[i],rest[j]]=[rest[j],rest[i]];}const ordered=currentItem?[currentItem,...rest]:rest;for(let i=0;i<ordered.length;i++){const r=await getClient().from('queue_items').update({position:i}).eq('id',ordered[i].id);if(r.error)return notify(r.error.message,'error');}await refreshQueue();await broadcast('queue',{queue:state.queue});notify('Queue shuffled for everyone');}
@@ -167,14 +182,82 @@
   }
   function currentTime(){try{return state.playerReady?state.player.getCurrentTime():Number(state.room.position_seconds||0);}catch(_){return Number(state.room.position_seconds||0);}}
   async function performPlayback(action,videoId,position=0,playing=false){
-    if(action==='load'){const idx=state.queue.findIndex(x=>x.video_id===videoId);const patch={current_video_id:videoId,current_index:idx<0?0:idx,is_playing:playing,position_seconds:position};const r=await getClient().from('rooms').update({...patch,updated_at:new Date().toISOString()}).eq('id',state.room.id).select().single();if(!r.error)state.room=r.data;renderRoom();if(state.isHost)loadVideo(videoId,position,playing);await broadcast('room',patch);return;}
-    const playingNow=action==='play';const pos=position;const patch={is_playing:playingNow,position_seconds:pos,updated_at:new Date().toISOString()};const r=await getClient().from('rooms').update(patch).eq('id',state.room.id).select().single();if(!r.error)state.room=r.data;renderRoom();if(state.isHost)applyLocalPlay(playingNow);await broadcast('room',patch);
+    if(action==='load'){const idx=state.queue.findIndex(x=>x.video_id===videoId);const patch={current_video_id:videoId,current_index:idx<0?0:idx,is_playing:playing,position_seconds:position};const r=await getClient().from('rooms').update({...patch,updated_at:new Date().toISOString()}).eq('id',state.room.id).select().single();if(!r.error)state.room=r.data;updateRoomView();if(state.isHost)loadVideo(videoId,position,playing);await broadcast('room',patch);return;}
+    const playingNow=action==='play';const pos=position;const patch={is_playing:playingNow,position_seconds:pos,updated_at:new Date().toISOString()};const r=await getClient().from('rooms').update(patch).eq('id',state.room.id).select().single();if(!r.error)state.room=r.data;updateRoomView();if(state.isHost)applyLocalPlay(playingNow);await broadcast('room',patch);
   }
 
-  function loadYouTubeAPI(){if(state.ytReady)return;if(window.YT&&window.YT.Player){state.ytReady=true;initPlayer();return;}const old=window.onYouTubeIframeAPIReady;window.onYouTubeIframeAPIReady=()=>{state.ytReady=true;initPlayer();if(typeof old==='function')old();};const s=document.createElement('script');s.src='https://www.youtube.com/iframe_api';s.async=true;s.onerror=()=>notify('YouTube player library failed to load.','error');document.head.appendChild(s);}
-  function initPlayer(){if(!state.isHost||state.player)return;const holder=document.getElementById('player');if(!holder)return;state.player=new YT.Player('player',{videoId:state.room.current_video_id||undefined,playerVars:{playsinline:1,controls:1,rel:0},events:{onReady:()=>{state.playerReady=true;if(state.room.current_video_id){if(state.room.is_playing)state.player.loadVideoById({videoId:state.room.current_video_id,startSeconds:Number(state.room.position_seconds||0)});else state.player.cueVideoById(state.room.current_video_id);}},onStateChange:async e=>{if(e.data===YT.PlayerState.ENDED){await sendCommand('next');}else if(e.data===YT.PlayerState.PLAYING){state.room.is_playing=true;state.room.position_seconds=currentTime();await broadcast('room',{is_playing:true,position_seconds:state.room.position_seconds});}else if(e.data===YT.PlayerState.PAUSED){state.room.is_playing=false;state.room.position_seconds=currentTime();await broadcast('room',{is_playing:false,position_seconds:state.room.position_seconds});}}}});}
-  function loadVideo(id,pos,play){if(!state.playerReady)return;state.player.loadVideoById({videoId:id,startSeconds:Number(pos||0)});if(!play)state.player.pauseVideo();}
-  function applyLocalPlay(play){if(!state.playerReady)return;play?state.player.playVideo():state.player.pauseVideo();}
+  function loadYouTubeAPI(){
+    if(!state.isHost)return;
+    if(state.ytReady&&window.YT&&window.YT.Player){ensureYouTubePlayer();return;}
+    if(state.ytLoading)return;
+    if(window.YT&&window.YT.Player){state.ytReady=true;ensureYouTubePlayer();return;}
+    state.ytLoading=true;
+    const previous=window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady=()=>{
+      state.ytLoading=false;state.ytReady=!!(window.YT&&window.YT.Player);
+      if(state.ytReady)ensureYouTubePlayer();else notify('YouTube API loaded but the player is unavailable.','error');
+      if(typeof previous==='function')try{previous();}catch(_){ }
+    };
+    const script=document.createElement('script');
+    script.src='https://www.youtube.com/iframe_api';
+    script.async=true;
+    script.onerror=()=>{state.ytLoading=false;notify('Could not load YouTube. Check that YouTube is reachable on this device.','error');};
+    document.head.appendChild(script);
+    setTimeout(()=>{if(state.ytLoading){state.ytLoading=false;notify('YouTube is taking too long to load. Reload and try again.','error');}},12000);
+  }
+
+  function ensureYouTubePlayer(){
+    if(!state.isHost||!state.room?.current_video_id)return;
+    if(!(window.YT&&window.YT.Player)){loadYouTubeAPI();return;}
+    state.ytReady=true;
+    const holder=document.getElementById('player');
+    if(!holder)return;
+    if(state.playerReady&&state.player)return;
+    if(state.player){try{state.player.destroy();}catch(_){ }state.player=null;state.playerReady=false;}
+    const placeholder=document.getElementById('playerPlaceholder');
+    if(placeholder)placeholder.textContent='Loading YouTube player…';
+    try{
+      state.player=new YT.Player('player',{
+        width:'100%',height:'100%',
+        videoId:state.room.current_video_id,
+        playerVars:{playsinline:1,controls:1,rel:0,enablejsapi:1,origin:location.origin},
+        events:{
+          onReady:()=>{
+            state.playerReady=true;
+            const p=Number(state.room.position_seconds||0);
+            if(state.room.is_playing)state.player.loadVideoById({videoId:state.room.current_video_id,startSeconds:p});
+            else state.player.cueVideoById({videoId:state.room.current_video_id,startSeconds:p});
+          },
+          onStateChange:async e=>{
+            if(e.data===YT.PlayerState.ENDED){await sendCommand('next');}
+            else if(e.data===YT.PlayerState.PLAYING){
+              state.room.is_playing=true;state.room.position_seconds=currentTime();await broadcast('room',{is_playing:true,position_seconds:state.room.position_seconds});
+            }else if(e.data===YT.PlayerState.PAUSED){
+              state.room.is_playing=false;state.room.position_seconds=currentTime();await broadcast('room',{is_playing:false,position_seconds:state.room.position_seconds});
+            }
+          },
+          onError:e=>{
+            const messages={2:'Invalid YouTube video ID.',5:'YouTube player error.',100:'This video was removed or is private.',101:'This video cannot be embedded.',150:'This video cannot be embedded.'};
+            notify(messages[e.data]||`YouTube player error (${e.data}).`,'error');
+          },
+          onAutoplayBlocked:()=>notify('YouTube blocked automatic playback. Press Play on the host phone.','info')
+        }
+      });
+    }catch(e){state.player=null;state.playerReady=false;notify(`Could not create YouTube player: ${e.message||e}`,'error');}
+  }
+
+  function loadVideo(id,pos,play){
+    if(!state.isHost)return;
+    if(!state.playerReady||!state.player){ensureYouTubePlayer();setTimeout(()=>{if(state.playerReady&&state.player)loadVideo(id,pos,play);},500);return;}
+    try{
+      state.player.loadVideoById({videoId:id,startSeconds:Number(pos||0)});
+      if(!play)state.player.pauseVideo();
+    }catch(e){notify('Could not load this YouTube video.','error');}
+  }
+  function applyLocalPlay(play){
+    if(!state.playerReady||!state.player){ensureYouTubePlayer();return;}
+    try{play?state.player.playVideo():state.player.pauseVideo();}catch(e){notify('Could not control the YouTube player.','error');}
+  }
 
   window.addEventListener('error',e=>{if(!document.getElementById('app'))return;console.error(e.error||e.message);});
   window.addEventListener('unhandledrejection',e=>{console.error(e.reason);});
