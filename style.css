@@ -286,3 +286,65 @@
   .main-section:has(.collapsible-body.collapsed) .section-heading{min-height:68px!important}
   .main-section:has(.collapsible-body.collapsed) .section-label{font-size:23px!important}
 }
+
+/* FINAL SLEEK SECTION HEADER OVERRIDE */
+.main-section .section-title.section-toggle > .section-heading {
+  appearance:none;
+  -webkit-appearance:none;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:space-between !important;
+  min-height:72px !important;
+  width:100% !important;
+  padding:14px 16px !important;
+  background:linear-gradient(135deg,#17263d,#101b2d) !important;
+  border:1px solid #3a506f !important;
+  border-radius:16px !important;
+  color:#fff !important;
+  cursor:pointer !important;
+  text-align:left !important;
+}
+.main-section .section-title.section-toggle > .section-heading .section-label {
+  display:block !important;
+  color:#f7f9fc !important;
+  font-size:26px !important;
+  font-weight:900 !important;
+  letter-spacing:.035em !important;
+  line-height:1.1 !important;
+}
+.main-section .section-title.section-toggle > .section-heading .section-count,
+.main-section .section-title.section-toggle > .section-heading .section-private {
+  display:inline-flex !important;
+  vertical-align:middle;
+}
+.main-section .section-title.section-toggle > .section-heading .chevron {
+  display:grid !important;
+  place-items:center !important;
+  width:42px !important;
+  height:42px !important;
+  flex:0 0 42px !important;
+  border-radius:12px !important;
+  background:#1d2d46 !important;
+  border:1px solid #405673 !important;
+  color:#fff !important;
+  font-size:17px !important;
+}
+.main-section .section-title.section-toggle > .section-heading:hover {
+  background:linear-gradient(135deg,#1b2d48,#132139) !important;
+  border-color:#52729a !important;
+}
+.main-section .section-title.section-toggle > .section-heading:active { transform:translateY(1px); }
+.main-section:has(.collapsible-body.collapsed) .section-title.section-toggle > .section-heading {
+  min-height:78px !important;
+  background:linear-gradient(135deg,#1b2d48,#142239) !important;
+}
+.main-section:has(.collapsible-body.collapsed) .section-title.section-toggle > .section-heading .section-label {
+  font-size:27px !important;
+}
+@media(max-width:780px){
+  .main-section .section-title.section-toggle > .section-heading { min-height:64px !important; padding:12px 13px !important; }
+  .main-section .section-title.section-toggle > .section-heading .section-label { font-size:21px !important; }
+  .main-section .section-title.section-toggle > .section-heading .chevron { width:36px !important; height:36px !important; flex-basis:36px !important; }
+  .main-section:has(.collapsible-body.collapsed) .section-title.section-toggle > .section-heading { min-height:70px !important; }
+  .main-section:has(.collapsible-body.collapsed) .section-title.section-toggle > .section-heading .section-label { font-size:23px !important; }
+}
