@@ -36,3 +36,6 @@ Then open `http://localhost:8080`.
 The host uses the official YouTube IFrame Player API. Other phones do not load the video player; they send playback commands through the room.
 
 Updated: shared move up/down, remove video, host-only volume, autoplay-next handling, and preserved Supabase config.
+
+## Private My List
+Each participant gets a device/session-private My List stored in localStorage. Single YouTube links can be added without an API key. Full YouTube playlist import requires a YouTube Data API v3 key; put it in config.js as YOUTUBE_API_KEY. Selected or all private items can be uploaded to the shared room queue.

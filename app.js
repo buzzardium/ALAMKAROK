@@ -27,6 +27,12 @@
     return null;
   }
   function ytThumb(id){ return `https://i.ytimg.com/vi/${encodeURIComponent(id)}/hqdefault.jpg`; }
+  function privateKey(){ return state.room&&state.me ? `alamkarok-private-${state.room.id}-${state.me.id}` : null; }
+  function loadPrivateList(){ try{ const raw=privateKey()&&localStorage.getItem(privateKey()); state.privateList=raw?JSON.parse(raw):[]; if(!Array.isArray(state.privateList))state.privateList=[]; }catch(_){state.privateList=[];} }
+  function savePrivateList(){ try{ const k=privateKey(); if(k)localStorage.setItem(k,JSON.stringify(state.privateList)); }catch(_){} }
+  function playlistId(value){ try{ const u=new URL(value); return u.hostname.includes('youtube.com')&&u.searchParams.get('list') ? u.searchParams.get('list') : null; }catch(_){ return null; } }
+  function privateItemId(){ return 'p-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8); }
+  async function videoTitle(id){ let title='YouTube video'; try{const r=await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${encodeURIComponent(id)}&format=json`);if(r.ok){const j=await r.json();if(j.title)title=j.title;}}catch(_){} return title; }
   function notify(message, kind='info'){
     let n=document.getElementById('toast');
     if(!n){ n=document.createElement('div'); n.id='toast'; document.body.appendChild(n); }
@@ -113,7 +119,7 @@
       client.from('rooms').select('*').eq('id',state.room.id).single()
     ]);
     if(people.error)throw people.error;if(q.error)throw q.error;if(room.error)throw room.error;
-    state.people=people.data||[];state.queue=q.data||[];state.room=room.data;renderRoom();await setupRealtime();if(state.isHost)loadYouTubeAPI();
+    state.people=people.data||[];state.queue=q.data||[];state.room=room.data;loadPrivateList();renderRoom();await setupRealtime();if(state.isHost)loadYouTubeAPI();
   }
   async function setupRealtime(){
     const client=getClient();
@@ -136,7 +142,7 @@
     const current=state.room.current_video_id;const q=state.queue;
     app.innerHTML=`<div class="wrap room-screen"><div class="top"><div><div class="brand">ALAMKAROK</div><div class="small">Room <b>${esc(state.room.code)}</b> · <span id="peopleCount">${state.people.length}</span> people</div></div><div class="actions"><span class="badge"><span class="dot" style="background:${esc(state.me.color)}"></span>${esc(state.me.name)}</span><button class="btn" id="showQr">QR</button></div></div>
       <div class="roomgrid"><section><div class="card"><div class="player"><div id="player" class="playerbox"><div class="playerplaceholder" id="playerPlaceholder">${state.isHost?(current?'Loading YouTube player…':'Add a YouTube video to start playback.'):'Host is playing the video on their phone'}</div></div></div><div class="controls"><button class="control" id="prev" title="Previous">⏮</button><button class="control main" id="play" title="Play/Pause">${state.room.is_playing?'❚❚':'▶'}</button><button class="control" id="next" title="Next">⏭</button></div>${state.isHost?`<div class="volume-control"><span>🔊</span><input id="volume" class="range" type="range" min="0" max="100" value="80" aria-label="Host volume"><span id="volumeValue">80%</span></div>`:''}<div class="small center" id="playState">${state.room.is_playing?'Playing':'Paused'} · ${current?'Video selected':'No video selected'}</div></div>
-      <div class="card gap"><div class="section-title"><h2>Shared Queue <span class="muted">(<span id="queueCount">${q.length}</span>)</span></h2><button class="btn green" id="shuffle">🔀 Shuffle</button></div><div class="row"><input class="input" id="url" placeholder="Paste a YouTube link" inputmode="url"><button class="btn primary" id="add">Add to Queue</button></div><div class="queue" id="queueList">${q.length?q.map((x,i)=>`<div class="qitem ${x.video_id===current?'now':''}"><div class="qnum">${i+1}</div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.video_id===current?'NOW PLAYING · ':''}${esc(personName(x.added_by))}</div></div><div class="actions queue-actions"><button class="action-sm move-btn" data-up="${esc(x.id)}" title="Move up" ${i===0?'disabled':''}>↑</button><button class="action-sm move-btn" data-down="${esc(x.id)}" title="Move down" ${i===q.length-1?'disabled':''}>↓</button>${x.video_id!==current||state.isHost?`<button class="action-sm" data-play="${esc(x.id)}">Play</button>`:''}<button class="action-sm danger-sm" data-del="${esc(x.id)}">×</button></div></div>`).join(''):'<div class="empty">No videos yet. Add the first YouTube link.</div>'}</div></div></section>
+      <div class="card gap private-card"><div class="section-title"><h2>My List <span class="muted">(private)</span></h2><button class="btn" id="privateSelectAll">Select All</button></div><div class="row"><input class="input" id="privateUrl" placeholder="Paste a YouTube video or playlist link" inputmode="url"><button class="btn primary" id="privateAdd">Add to My List</button></div><div class="small private-help">Build your own list first. Select one, several, or all songs, then send them to the shared queue.</div><div class="queue" id="privateList"></div><div class="private-actions"><button class="btn green" id="uploadSelected">Upload Selected</button><button class="btn" id="uploadAll">Upload All</button></div></div><div class="card gap"><div class="section-title"><h2>Shared Queue <span class="muted">(<span id="queueCount">${q.length}</span>)</span></h2><button class="btn green" id="shuffle">🔀 Shuffle</button></div><div class="row"><input class="input" id="url" placeholder="Paste a YouTube link" inputmode="url"><button class="btn primary" id="add">Add to Queue</button></div><div class="queue" id="queueList">${q.length?q.map((x,i)=>`<div class="qitem ${x.video_id===current?'now':''}"><div class="qnum">${i+1}</div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.video_id===current?'NOW PLAYING · ':''}${esc(personName(x.added_by))}</div></div><div class="actions queue-actions"><button class="action-sm move-btn" data-up="${esc(x.id)}" title="Move up" ${i===0?'disabled':''}>↑</button><button class="action-sm move-btn" data-down="${esc(x.id)}" title="Move down" ${i===q.length-1?'disabled':''}>↓</button>${x.video_id!==current||state.isHost?`<button class="action-sm" data-play="${esc(x.id)}">Play</button>`:''}<button class="action-sm danger-sm" data-del="${esc(x.id)}">×</button></div></div>`).join(''):'<div class="empty">No videos yet. Add the first YouTube link.</div>'}</div></div></section>
       <aside><div class="card"><div class="section-title"><h2>People in Room</h2><span class="badge">${state.isHost?'HOST':'GUEST'}</span></div><div class="people" id="peopleList">${state.people.map(p=>`<div class="person"><span class="dot" style="background:${esc(p.color)}"></span><span>${esc(p.name)}${p.id===state.me.id?' <span class="muted">(You)</span>':''}${p.user_id===state.room.host_id?' 👑':''}</span></div>`).join('')}</div></div><div class="card gap"><div class="section-title"><h2>Room QR</h2></div><div id="qr" class="qr"></div><div class="small center">Scan to join</div><div class="linkbox">${esc(roomUrl(state.room.code))}</div></div></aside></div><div class="footer">Everyone can add links and control playback. Only the host displays YouTube.</div></div>`;
     bindRoomControls();
     if(state.isHost&&state.room.current_video_id)ensureYouTubePlayer();
@@ -152,17 +158,69 @@
     const list=document.getElementById('queueList');
     if(list)list.innerHTML=q.length?q.map((x,i)=>`<div class="qitem ${x.video_id===current?'now':''}"><div class="qnum">${i+1}</div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.video_id===current?'NOW PLAYING · ':''}${esc(personName(x.added_by))}</div></div><div class="actions queue-actions"><button class="action-sm move-btn" data-up="${esc(x.id)}" title="Move up" ${i===0?'disabled':''}>↑</button><button class="action-sm move-btn" data-down="${esc(x.id)}" title="Move down" ${i===q.length-1?'disabled':''}>↓</button>${x.video_id!==current||state.isHost?`<button class="action-sm" data-play="${esc(x.id)}">Play</button>`:''}<button class="action-sm danger-sm" data-del="${esc(x.id)}">×</button></div></div>`).join(''):'<div class="empty">No videos yet. Add the first YouTube link.</div>';
     if(list){list.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>removeItem(b.dataset.del));list.querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>playQueueItem(b.dataset.play));list.querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.up,-1));list.querySelectorAll('[data-down]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.down,1));}
+    renderPrivateList();
     const people=document.getElementById('peopleList');if(people)people.innerHTML=state.people.map(p=>`<div class="person"><span class="dot" style="background:${esc(p.color)}"></span><span>${esc(p.name)}${p.id===state.me.id?' <span class="muted">(You)</span>':''}${p.user_id===state.room.host_id?' 👑':''}</span></div>`).join('');
     if(state.isHost&&current)ensureYouTubePlayer();
   }
   function bindRoomControls(){
-    document.getElementById('add').onclick=addLink;document.getElementById('shuffle').onclick=shuffleQueue;document.getElementById('prev').onclick=()=>sendCommand('previous');document.getElementById('next').onclick=()=>sendCommand('next');document.getElementById('play').onclick=()=>sendCommand(state.room.is_playing?'pause':'play');document.getElementById('showQr').onclick=showQrModal;const vol=document.getElementById('volume');if(vol){vol.oninput=()=>{const v=Number(vol.value);const label=document.getElementById('volumeValue');if(label)label.textContent=v+'%';if(state.playerReady&&state.player)try{state.player.setVolume(v);state.player.unMute();if(v===0)state.player.mute();}catch(_){}};}
+    document.getElementById('add').onclick=addLink;document.getElementById('shuffle').onclick=shuffleQueue;document.getElementById('privateAdd').onclick=addPrivateInput;document.getElementById('privateSelectAll').onclick=selectAllPrivate;document.getElementById('uploadSelected').onclick=()=>uploadPrivate(false);document.getElementById('uploadAll').onclick=()=>uploadPrivate(true);document.getElementById('prev').onclick=()=>sendCommand('previous');document.getElementById('next').onclick=()=>sendCommand('next');document.getElementById('play').onclick=()=>sendCommand(state.room.is_playing?'pause':'play');document.getElementById('showQr').onclick=showQrModal;const vol=document.getElementById('volume');if(vol){vol.oninput=()=>{const v=Number(vol.value);const label=document.getElementById('volumeValue');if(label)label.textContent=v+'%';if(state.playerReady&&state.player)try{state.player.setVolume(v);state.player.unMute();if(v===0)state.player.mute();}catch(_){}};}
     document.getElementById('url').addEventListener('keydown',e=>{if(e.key==='Enter')addLink();});
     document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>removeItem(b.dataset.del));document.querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>playQueueItem(b.dataset.play));document.querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.up,-1));document.querySelectorAll('[data-down]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.down,1));
     const qr=document.getElementById('qr'); if(window.QRCode){new QRCode(qr,{text:roomUrl(state.room.code),width:150,height:150});} else qr.innerHTML='<div class="small qrtext">QR library unavailable.<br>Use the link below.</div>';
   }
   function showQrModal(){const back=document.createElement('div');back.className='modalback';back.innerHTML=`<div class="modal center"><div class="brand">ALAMKAROK</div><h2>Join Room</h2><div id="modalQr" class="qr"></div><div class="code">${esc(state.room.code)}</div><div class="linkbox">${esc(roomUrl(state.room.code))}</div><button class="btn primary wide" id="closeQr">Close</button></div>`;document.body.appendChild(back);if(window.QRCode)new QRCode(document.getElementById('modalQr'),{text:roomUrl(state.room.code),width:220,height:220});back.querySelector('#closeQr').onclick=()=>back.remove();}
   function personName(id){const p=state.people.find(x=>x.id===id);return p?p.name:'Unknown';}
+
+  function renderPrivateList(){
+    const list=document.getElementById('privateList'); if(!list)return;
+    list.innerHTML=state.privateList.length ? state.privateList.map((x,i)=>`<div class="qitem private-item"><input class="private-check" type="checkbox" data-private-check="${esc(x.id)}" ${x.selected?'checked':''} aria-label="Select ${esc(x.title)}"><div class="qnum">${i+1}</div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">Private · not uploaded</div></div><div class="actions queue-actions"><button class="action-sm move-btn" data-private-up="${esc(x.id)}" ${i===0?'disabled':''}>↑</button><button class="action-sm move-btn" data-private-down="${esc(x.id)}" ${i===state.privateList.length-1?'disabled':''}>↓</button><button class="action-sm danger-sm" data-private-del="${esc(x.id)}">×</button></div></div>`).join('') : '<div class="empty">Your private list is empty.</div>';
+    list.querySelectorAll('[data-private-check]').forEach(b=>b.onchange=()=>{const x=state.privateList.find(x=>x.id===b.dataset.privateCheck);if(x){x.selected=b.checked;savePrivateList();}});
+    list.querySelectorAll('[data-private-up]').forEach(b=>b.onclick=()=>movePrivate(b.dataset.privateUp,-1));
+    list.querySelectorAll('[data-private-down]').forEach(b=>b.onclick=()=>movePrivate(b.dataset.privateDown,1));
+    list.querySelectorAll('[data-private-del]').forEach(b=>b.onclick=()=>deletePrivate(b.dataset.privateDel));
+  }
+  function selectAllPrivate(){ const all=state.privateList.length>0 && state.privateList.every(x=>x.selected); state.privateList.forEach(x=>x.selected=!all); savePrivateList(); renderPrivateList(); }
+  function movePrivate(id,direction){ const i=state.privateList.findIndex(x=>x.id===id), j=i+direction; if(i<0||j<0||j>=state.privateList.length)return; [state.privateList[i],state.privateList[j]]=[state.privateList[j],state.privateList[i]]; savePrivateList();renderPrivateList(); }
+  function deletePrivate(id){ state.privateList=state.privateList.filter(x=>x.id!==id);savePrivateList();renderPrivateList(); }
+  async function addPrivateInput(){
+    if(state.privateBusy)return;
+    const input=document.getElementById('privateUrl'), value=input.value.trim(); if(!value)return notify('Paste a YouTube video or playlist link.','error');
+    state.privateBusy=true;
+    try{
+      const listId=playlistId(value);
+      if(listId){ await importYouTubePlaylist(listId); input.value=''; return; }
+      const id=ytId(value); if(!id)throw new Error('Enter a valid YouTube video or playlist link.');
+      if(state.privateList.some(x=>x.video_id===id))return notify('That video is already in your private list.','info');
+      const title=await videoTitle(id); state.privateList.push({id:privateItemId(),video_id:id,title,thumbnail:ytThumb(id),selected:false});savePrivateList();input.value='';renderPrivateList();notify('Added to My List');
+    }catch(e){notify(e.message||'Could not add to My List','error');}finally{state.privateBusy=false;}
+  }
+  async function importYouTubePlaylist(listId){
+    const key=String(cfg.YOUTUBE_API_KEY||'').trim();
+    if(!key)throw new Error('Playlist import needs a YouTube Data API key. Add YOUTUBE_API_KEY to config.js. Single videos work without it.');
+    let pageToken=''; let added=0;
+    do{
+      const url=`https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=50&playlistId=${encodeURIComponent(listId)}&key=${encodeURIComponent(key)}${pageToken?`&pageToken=${encodeURIComponent(pageToken)}`:''}`;
+      const r=await fetch(url); const j=await r.json(); if(!r.ok)throw new Error(j.error?.message||'Could not import the YouTube playlist.');
+      for(const item of (j.items||[])){ const id=item.snippet?.resourceId?.videoId; if(!id||state.privateList.some(x=>x.video_id===id))continue; state.privateList.push({id:privateItemId(),video_id:id,title:item.snippet?.title||'YouTube video',thumbnail:item.snippet?.thumbnails?.medium?.url||ytThumb(id),selected:false});added++; }
+      pageToken=j.nextPageToken||''; savePrivateList(); renderPrivateList();
+    }while(pageToken);
+    notify(added?`Imported ${added} video${added===1?'':'s'} to My List`:'No new videos found.','info');
+  }
+  function uploadPrivate(all){
+    const items=all?state.privateList.filter(Boolean):state.privateList.filter(x=>x.selected); if(!items.length)return notify(all?'Your private list is empty.':'Select at least one video.','error');
+    uploadPrivateItems(items);
+  }
+  async function uploadPrivateItems(items){
+    if(state.privateBusy)return; state.privateBusy=true;
+    try{
+      const start=state.queue.length?Math.max(...state.queue.map(x=>x.position))+1:0;
+      const rows=items.map((x,i)=>({room_id:state.room.id,video_id:x.video_id,title:x.title||'YouTube video',thumbnail:x.thumbnail||ytThumb(x.video_id),added_by:state.me.id,position:start+i}));
+      const r=await getClient().from('queue_items').insert(rows).select(); if(r.error)throw r.error;
+      const ids=new Set(items.map(x=>x.id)); state.privateList=state.privateList.map(x=>ids.has(x.id)?{...x,selected:false}:x);savePrivateList();await refreshQueue();await broadcast('queue',{queue:state.queue});
+      if(state.isHost&&!state.room.current_video_id&&r.data?.[0])await performPlayback('load',r.data[0].video_id,0,true);
+      notify(`${items.length} video${items.length===1?'':'s'} added to the shared queue`);
+    }catch(e){notify(e.message||'Could not upload videos to the shared queue','error');}finally{state.privateBusy=false;}
+  }
 
   async function addLink(){if(state.busy)return;const input=document.getElementById('url');const id=ytId(input.value.trim());if(!id)return notify('Enter a valid YouTube link.','error');state.busy=true;try{let title='YouTube video';try{const r=await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${encodeURIComponent(id)}&format=json`);if(r.ok){const j=await r.json();if(j.title)title=j.title;}}catch(_){}const pos=state.queue.length?Math.max(...state.queue.map(x=>x.position))+1:0;const r=await getClient().from('queue_items').insert({room_id:state.room.id,video_id:id,title,thumbnail:ytThumb(id),added_by:state.me.id,position:pos}).select().single();if(r.error)throw r.error;input.value='';await refreshQueue();await broadcast('queue',{queue:state.queue});if(state.isHost&&!state.room.current_video_id)await performPlayback('load',id,0,true);notify('Added to the shared queue');}catch(e){notify(e.message||'Could not add video','error');}finally{state.busy=false;}}
   async function removeItem(id){
