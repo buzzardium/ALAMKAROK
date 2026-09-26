@@ -6,7 +6,7 @@
   const colors = ['#9b5cff','#28a8ff','#18c9a0','#ff9d2e','#ff4f5f','#f1d21b','#ef67c7','#7bd66f','#54d8e8','#ff6f9c'];
   const state = {
     room:null, me:null, people:[], queue:[], isHost:false, channel:null,
-    player:null, playerReady:false, ytReady:false, ytLoading:false, currentPosition:0, busy:false
+    player:null, playerReady:false, ytReady:false, ytLoading:false, currentPosition:0, busy:false, privateList:[], privateBusy:false, privateCollapsed:false, sharedCollapsed:false
   };
 
   function esc(v){ return String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -27,9 +27,11 @@
     return null;
   }
   function ytThumb(id){ return `https://i.ytimg.com/vi/${encodeURIComponent(id)}/hqdefault.jpg`; }
-  function privateKey(){ return state.room&&state.me ? `alamkarok-private-${state.room.id}-${state.me.id}` : null; }
-  function loadPrivateList(){ try{ const raw=privateKey()&&localStorage.getItem(privateKey()); state.privateList=raw?JSON.parse(raw):[]; if(!Array.isArray(state.privateList))state.privateList=[]; }catch(_){state.privateList=[];} }
-  function savePrivateList(){ try{ const k=privateKey(); if(k)localStorage.setItem(k,JSON.stringify(state.privateList)); }catch(_){} }
+  function privateKey(){ return state.room&&state.me ? `alamkarok-private-v2-${state.room.code}-${state.me.user_id||state.me.id}` : null; }
+  function loadPrivateList(){ state.privateList=[]; state.privateCollapsed=false; state.sharedCollapsed=false; try{ const k=privateKey(); if(!k)return; const raw=localStorage.getItem(k); const parsed=raw?JSON.parse(raw):[]; if(Array.isArray(parsed)) state.privateList=parsed.filter(x=>x&&x.video_id); else if(parsed&&typeof parsed==='object'){ state.privateList=Array.isArray(parsed.items)?parsed.items.filter(x=>x&&x.video_id):[]; state.privateCollapsed=!!parsed.privateCollapsed; state.sharedCollapsed=!!parsed.sharedCollapsed; } }catch(_){state.privateList=[];} }
+  function savePrivateList(){ try{ const k=privateKey(); if(k)localStorage.setItem(k,JSON.stringify({items:state.privateList,privateCollapsed:state.privateCollapsed,sharedCollapsed:state.sharedCollapsed})); }catch(_){} }
+  function toggleListSection(which){ if(which==='private') state.privateCollapsed=!state.privateCollapsed; else state.sharedCollapsed=!state.sharedCollapsed; savePrivateList(); updateListSectionUI(); }
+  function updateListSectionUI(){ const p=document.getElementById('privateBody'), q=document.getElementById('sharedBody'); if(p){p.classList.toggle('collapsed',state.privateCollapsed); p.setAttribute('aria-hidden',state.privateCollapsed?'true':'false');} if(q){q.classList.toggle('collapsed',state.sharedCollapsed); q.setAttribute('aria-hidden',state.sharedCollapsed?'true':'false');} document.querySelectorAll('[data-collapse]').forEach(b=>{const c=b.dataset.collapse==='private'?state.privateCollapsed:state.sharedCollapsed;b.textContent=c?'▼':'▲';b.setAttribute('aria-expanded',c?'false':'true');}); }
   function playlistId(value){ try{ const u=new URL(value); return u.hostname.includes('youtube.com')&&u.searchParams.get('list') ? u.searchParams.get('list') : null; }catch(_){ return null; } }
   function privateItemId(){ return 'p-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8); }
   async function videoTitle(id){ let title='YouTube video'; try{const r=await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${encodeURIComponent(id)}&format=json`);if(r.ok){const j=await r.json();if(j.title)title=j.title;}}catch(_){} return title; }
@@ -142,7 +144,7 @@
     const current=state.room.current_video_id;const q=state.queue;
     app.innerHTML=`<div class="wrap room-screen"><div class="top"><div><div class="brand">ALAMKAROK</div><div class="small">Room <b>${esc(state.room.code)}</b> · <span id="peopleCount">${state.people.length}</span> people</div></div><div class="actions"><span class="badge"><span class="dot" style="background:${esc(state.me.color)}"></span>${esc(state.me.name)}</span><button class="btn" id="showQr">QR</button></div></div>
       <div class="roomgrid"><section><div class="card"><div class="player"><div id="player" class="playerbox"><div class="playerplaceholder" id="playerPlaceholder">${state.isHost?(current?'Loading YouTube player…':'Add a YouTube video to start playback.'):'Host is playing the video on their phone'}</div></div></div><div class="controls"><button class="control" id="prev" title="Previous">⏮</button><button class="control main" id="play" title="Play/Pause">${state.room.is_playing?'❚❚':'▶'}</button><button class="control" id="next" title="Next">⏭</button></div>${state.isHost?`<div class="volume-control"><span>🔊</span><input id="volume" class="range" type="range" min="0" max="100" value="80" aria-label="Host volume"><span id="volumeValue">80%</span></div>`:''}<div class="small center" id="playState">${state.room.is_playing?'Playing':'Paused'} · ${current?'Video selected':'No video selected'}</div></div>
-      <div class="card gap private-card"><div class="section-title"><h2>My List <span class="muted">(private)</span></h2><button class="btn" id="privateSelectAll">Select All</button></div><div class="row"><input class="input" id="privateUrl" placeholder="Paste a YouTube video or playlist link" inputmode="url"><button class="btn primary" id="privateAdd">Add to My List</button></div><div class="small private-help">Build your own list first. Select one, several, or all songs, then send them to the shared queue.</div><div class="queue" id="privateList"></div><div class="private-actions"><button class="btn green" id="uploadSelected">Upload Selected</button><button class="btn" id="uploadAll">Upload All</button></div></div><div class="card gap"><div class="section-title"><h2>Shared Queue <span class="muted">(<span id="queueCount">${q.length}</span>)</span></h2><button class="btn green" id="shuffle">🔀 Shuffle</button></div><div class="row"><input class="input" id="url" placeholder="Paste a YouTube link" inputmode="url"><button class="btn primary" id="add">Add to Queue</button></div><div class="queue" id="queueList">${q.length?q.map((x,i)=>`<div class="qitem ${x.video_id===current?'now':''}"><div class="qnum">${i+1}</div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.video_id===current?'NOW PLAYING · ':''}${esc(personName(x.added_by))}</div></div><div class="actions queue-actions"><button class="action-sm move-btn" data-up="${esc(x.id)}" title="Move up" ${i===0?'disabled':''}>↑</button><button class="action-sm move-btn" data-down="${esc(x.id)}" title="Move down" ${i===q.length-1?'disabled':''}>↓</button>${x.video_id!==current||state.isHost?`<button class="action-sm" data-play="${esc(x.id)}">Play</button>`:''}<button class="action-sm danger-sm" data-del="${esc(x.id)}">×</button></div></div>`).join(''):'<div class="empty">No videos yet. Add the first YouTube link.</div>'}</div></div></section>
+      <div class="card gap private-card"><div class="section-title section-toggle"><button class="section-heading" id="togglePrivate" data-collapse="private" aria-expanded="${state.privateCollapsed?'false':'true'}"><h2>My List <span class="muted">(private)</span></h2><span class="chevron">${state.privateCollapsed?'▼':'▲'}</span></button><button class="btn" id="privateSelectAll">Select All</button></div><div id="privateBody" class="collapsible-body ${state.privateCollapsed?'collapsed':''}" aria-hidden="${state.privateCollapsed?'true':'false'}"><div class="row"><input class="input" id="privateUrl" placeholder="Paste a YouTube video or playlist link" inputmode="url"><button class="btn primary" id="privateAdd">Add to My List</button></div><div class="small private-help">Build your own list first. Select one, several, or all songs, then send them to the shared queue.</div><div class="queue" id="privateList"></div><div class="private-actions"><button class="btn green" id="uploadSelected">Upload Selected</button><button class="btn" id="uploadAll">Upload All</button></div></div></div><div class="card gap"><div class="section-title section-toggle"><button class="section-heading" id="toggleShared" data-collapse="shared" aria-expanded="${state.sharedCollapsed?'false':'true'}"><h2>Shared Queue <span class="muted">(<span id="queueCount">${q.length}</span>)</span></h2><span class="chevron">${state.sharedCollapsed?'▼':'▲'}</span></button><button class="btn green" id="shuffle">🔀 Shuffle</button></div><div id="sharedBody" class="collapsible-body ${state.sharedCollapsed?'collapsed':''}" aria-hidden="${state.sharedCollapsed?'true':'false'}"><div class="row"><input class="input" id="url" placeholder="Paste a YouTube link" inputmode="url"><button class="btn primary" id="add">Add to Queue</button></div><div class="queue" id="queueList">${q.length?q.map((x,i)=>`<div class="qitem ${x.video_id===current?'now':''}"><div class="qnum">${i+1}</div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.video_id===current?'NOW PLAYING · ':''}${esc(personName(x.added_by))}</div></div><div class="actions queue-actions"><button class="action-sm move-btn" data-up="${esc(x.id)}" title="Move up" ${i===0?'disabled':''}>↑</button><button class="action-sm move-btn" data-down="${esc(x.id)}" title="Move down" ${i===q.length-1?'disabled':''}>↓</button>${x.video_id!==current||state.isHost?`<button class="action-sm" data-play="${esc(x.id)}">Play</button>`:''}<button class="action-sm danger-sm" data-del="${esc(x.id)}">×</button></div></div>`).join(''):'<div class="empty">No videos yet. Add the first YouTube link.</div>'}</div></div></section>
       <aside><div class="card"><div class="section-title"><h2>People in Room</h2><span class="badge">${state.isHost?'HOST':'GUEST'}</span></div><div class="people" id="peopleList">${state.people.map(p=>`<div class="person"><span class="dot" style="background:${esc(p.color)}"></span><span>${esc(p.name)}${p.id===state.me.id?' <span class="muted">(You)</span>':''}${p.user_id===state.room.host_id?' 👑':''}</span></div>`).join('')}</div></div><div class="card gap"><div class="section-title"><h2>Room QR</h2></div><div id="qr" class="qr"></div><div class="small center">Scan to join</div><div class="linkbox">${esc(roomUrl(state.room.code))}</div></div></aside></div><div class="footer">Everyone can add links and control playback. Only the host displays YouTube.</div></div>`;
     bindRoomControls();
     if(state.isHost&&state.room.current_video_id)ensureYouTubePlayer();
@@ -163,7 +165,7 @@
     if(state.isHost&&current)ensureYouTubePlayer();
   }
   function bindRoomControls(){
-    document.getElementById('add').onclick=addLink;document.getElementById('shuffle').onclick=shuffleQueue;document.getElementById('privateAdd').onclick=addPrivateInput;document.getElementById('privateSelectAll').onclick=selectAllPrivate;document.getElementById('uploadSelected').onclick=()=>uploadPrivate(false);document.getElementById('uploadAll').onclick=()=>uploadPrivate(true);document.getElementById('prev').onclick=()=>sendCommand('previous');document.getElementById('next').onclick=()=>sendCommand('next');document.getElementById('play').onclick=()=>sendCommand(state.room.is_playing?'pause':'play');document.getElementById('showQr').onclick=showQrModal;const vol=document.getElementById('volume');if(vol){vol.oninput=()=>{const v=Number(vol.value);const label=document.getElementById('volumeValue');if(label)label.textContent=v+'%';if(state.playerReady&&state.player)try{state.player.setVolume(v);state.player.unMute();if(v===0)state.player.mute();}catch(_){}};}
+    document.getElementById('togglePrivate').onclick=()=>toggleListSection('private');document.getElementById('toggleShared').onclick=()=>toggleListSection('shared');document.getElementById('add').onclick=addLink;document.getElementById('shuffle').onclick=shuffleQueue;const privateAddBtn=document.getElementById('privateAdd'); if(privateAddBtn) privateAddBtn.onclick=(e)=>{e.preventDefault();addPrivateInput();};document.getElementById('privateSelectAll').onclick=selectAllPrivate;document.getElementById('uploadSelected').onclick=()=>uploadPrivate(false);document.getElementById('uploadAll').onclick=()=>uploadPrivate(true);document.getElementById('prev').onclick=()=>sendCommand('previous');document.getElementById('next').onclick=()=>sendCommand('next');document.getElementById('play').onclick=()=>sendCommand(state.room.is_playing?'pause':'play');document.getElementById('showQr').onclick=showQrModal;const vol=document.getElementById('volume');if(vol){vol.oninput=()=>{const v=Number(vol.value);const label=document.getElementById('volumeValue');if(label)label.textContent=v+'%';if(state.playerReady&&state.player)try{state.player.setVolume(v);state.player.unMute();if(v===0)state.player.mute();}catch(_){}};}
     document.getElementById('url').addEventListener('keydown',e=>{if(e.key==='Enter')addLink();});
     document.getElementById('privateUrl').addEventListener('keydown',e=>{if(e.key==='Enter')addPrivateInput();});
     document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>removeItem(b.dataset.del));document.querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>playQueueItem(b.dataset.play));document.querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.up,-1));document.querySelectorAll('[data-down]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.down,1));
@@ -188,34 +190,25 @@
     const input=document.getElementById('privateUrl');
     const value=(input?.value||'').trim();
     if(!value)return notify('Paste a YouTube video or playlist link.','error');
-    state.privateBusy=true;
-    try{
-      const listId=playlistId(value);
-      if(listId){
-        input.value='';
-        await importYouTubePlaylist(listId);
-        return;
-      }
-      const id=ytId(value);
-      if(!id)throw new Error('Enter a valid YouTube video link.');
-      if(state.privateList.some(x=>x.video_id===id))return notify('That video is already in your private list.','info');
-
-      // Add immediately. Do not make the private list depend on YouTube oEmbed/CORS.
-      const item={id:privateItemId(),video_id:id,title:'YouTube video',thumbnail:ytThumb(id),selected:false};
-      state.privateList.push(item);
-      savePrivateList();
+    const listId=playlistId(value);
+    if(listId){
       input.value='';
-      renderPrivateList();
-      notify('Added to My List');
-
-      // Try to improve the title in the background; failure does not affect the list.
-      videoTitle(id).then(title=>{
-        const found=state.privateList.find(x=>x.id===item.id);
-        if(found && title){found.title=title;savePrivateList();renderPrivateList();}
-      }).catch(()=>{});
-    }catch(e){
-      notify(e.message||'Could not add to My List','error');
-    }finally{state.privateBusy=false;}
+      try{ await importYouTubePlaylist(listId); }catch(e){ notify(e.message||'Could not import playlist','error'); }
+      return;
+    }
+    const id=ytId(value);
+    if(!id)return notify('Enter a valid YouTube video link.','error');
+    if(state.privateList.some(x=>x.video_id===id))return notify('That video is already in your private list.','info');
+    const item={id:privateItemId(),video_id:id,title:'YouTube video',thumbnail:ytThumb(id),selected:false};
+    state.privateList.push(item);
+    savePrivateList();
+    if(input)input.value='';
+    renderPrivateList();
+    notify('Added to My List');
+    videoTitle(id).then(title=>{
+      const found=state.privateList.find(x=>x.id===item.id);
+      if(found&&title&&title!=='YouTube video'){found.title=title;savePrivateList();renderPrivateList();}
+    }).catch(()=>{});
   }
   async function importYouTubePlaylist(listId){
     const key=String(cfg.YOUTUBE_API_KEY||'').trim();
