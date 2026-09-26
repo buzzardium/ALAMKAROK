@@ -6,7 +6,7 @@
   const colors = ['#9b5cff','#28a8ff','#18c9a0','#ff9d2e','#ff4f5f','#f1d21b','#ef67c7','#7bd66f','#54d8e8','#ff6f9c'];
   const state = {
     room:null, me:null, people:[], queue:[], isHost:false, channel:null,
-    player:null, playerReady:false, ytReady:false, ytLoading:false, currentPosition:0, busy:false, privateList:[], privateBusy:false, privateCollapsed:false, sharedCollapsed:false, playlistCollapsed:{}, chatMessages:[], chatLoading:false, pointsReady:false, endPreviewItems:null
+    player:null, playerReady:false, ytReady:false, ytLoading:false, currentPosition:0, busy:false, privateList:[], privateBusy:false, privateCollapsed:false, sharedCollapsed:false, playlistCollapsed:{}, queueVersion:0, chatMessages:[], chatLoading:false, pointsReady:false, endPreviewItems:null, drag:{type:null,id:null}
   };
 
   function esc(v){ return String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -123,15 +123,15 @@
       client.from('rooms').select('*').eq('id',state.room.id).single()
     ]);
     if(people.error)throw people.error;if(q.error)throw q.error;if(room.error)throw room.error;
-    state.people=people.data||[];state.queue=q.data||[];state.room=room.data;state.chatMessages=[];loadPrivateList();await loadChatMessages();renderRoom();await setupRealtime();if(state.isHost)loadYouTubeAPI();
+    state.people=people.data||[];state.queue=q.data||[];state.room=room.data;state.queueVersion=Number(state.room.queue_version||0);state.chatMessages=[];loadPrivateList();await loadChatMessages();renderRoom();await setupRealtime();if(state.isHost)loadYouTubeAPI();
   }
   async function setupRealtime(){
     const client=getClient();
     state.channel=client.channel(`alamkarok-${state.room.id}`,{config:{broadcast:{self:true},presence:{key:state.me.id}}});
     state.channel.on('broadcast',{event:'command'},({payload})=>handleCommandBroadcast(payload))
-      .on('broadcast',{event:'queue'},({payload})=>{state.queue=payload.queue||[];updateRoomView();})
+      .on('broadcast',{event:'queue'},({payload})=>{state.queue=payload.queue||[];if(Number.isFinite(Number(payload.queue_version)))state.queueVersion=Number(payload.queue_version);updateRoomView();})
       .on('broadcast',{event:'people'},({payload})=>{state.people=payload.people||[];updateRoomView();})
-      .on('broadcast',{event:'room'},({payload})=>{state.room={...state.room,...payload};updateRoomView();})
+      .on('broadcast',{event:'room'},({payload})=>{state.room={...state.room,...payload};if(Number.isFinite(Number(payload?.queue_version)))state.queueVersion=Number(payload.queue_version);updateRoomView();})
       .on('broadcast',{event:'chat'},({payload})=>{if(payload?.message) receiveChatMessage(payload.message);})
       .on('broadcast',{event:'points'},({payload})=>{if(payload?.people){state.people=payload.people;updatePeopleUI();}})
       .on('postgres_changes',{event:'*',schema:'public',table:'participants',filter:`room_id=eq.${state.room.id}`},refreshPeople)
@@ -153,7 +153,7 @@
   function openGivePoints(recipientId){const existing=document.getElementById('givePointsPop');if(existing)existing.remove();const p=state.people.find(x=>x.id===recipientId);if(!p)return;const back=document.createElement('div');back.className='point-popover';back.innerHTML=`<div class="point-pop-card"><div class="small">Give points to <b>${esc(p.name)}</b></div><div class="point-options"><button class="btn" data-pts="1">+1 ⭐</button><button class="btn" data-pts="5">+5 ⭐</button><button class="btn primary" data-pts="10">+10 ⭐</button></div><button class="point-close">Cancel</button></div>`;back.id='givePointsPop';document.body.appendChild(back);back.querySelectorAll('[data-pts]').forEach(b=>b.onclick=()=>givePoints(recipientId,Number(b.dataset.pts)));back.querySelector('.point-close').onclick=()=>back.remove();back.onclick=e=>{if(e.target===back)back.remove();};}
   async function givePoints(recipientId,amount){const back=document.getElementById('givePointsPop');if(back)back.remove();if(recipientId===state.me.id)return;if(![1,5,10].includes(amount))return;const recipient=state.people.find(x=>x.id===recipientId);if(!recipient)return;try{const r=await getClient().rpc('give_points',{p_room_id:state.room.id,p_giver_id:state.me.id,p_recipient_id:recipientId,p_amount:amount});if(r.error)throw r.error;await refreshPeople();await broadcast('points',{people:state.people});notify(`Gave ${amount} point${amount===1?'':'s'} to ${recipient.name} ⭐`,'info');}catch(e){notify('Points need the chat/points database update first.','error');}}
   async function refreshQueue(){const r=await getClient().from('queue_items').select('*').eq('room_id',state.room.id).order('position',{ascending:true});if(!r.error){state.queue=r.data||[];updateRoomView();}}
-  async function refreshRoom(){const r=await getClient().from('rooms').select('*').eq('id',state.room.id).single();if(!r.error){state.room=r.data;updateRoomView();if(state.isHost&&state.room.current_video_id)ensureYouTubePlayer();}}
+  async function refreshRoom(){const r=await getClient().from('rooms').select('*').eq('id',state.room.id).single();if(!r.error){state.room=r.data;state.queueVersion=Number(r.data.queue_version||0);updateRoomView();if(state.isHost&&state.room.current_video_id)ensureYouTubePlayer();}}
   async function broadcast(event,payload){if(state.channel) await state.channel.send({type:'broadcast',event,payload});}
 
   function renderRoom(){
@@ -168,7 +168,7 @@
 
       <section class="main-section shared-section card gap">
         <div class="section-title section-toggle"><button class="btn collapse-btn" id="toggleShared" data-collapse="shared" aria-expanded="${state.sharedCollapsed?'false':'true'}" aria-label="Collapse shared queue"><span class="chevron" aria-hidden="true">${state.sharedCollapsed?'▼':'▲'}</span></button><div class="section-static-label">SHARED QUEUE <span class="section-count">(<span id="queueCount">${q.length}</span>)</span></div><button class="btn green section-action-btn" id="shuffle">🔀 Shuffle</button></div>
-                <div id="sharedBody" class="collapsible-body ${state.sharedCollapsed?'collapsed':''}" aria-hidden="${state.sharedCollapsed?'true':'false'}"><div class="row"><input class="input" id="url" placeholder="Paste a YouTube link" inputmode="url"><button class="btn primary" id="add">Add to Queue</button></div><div class="queue" id="queueList">${q.length?q.map((x,i)=>`<div class="qitem ${x.video_id===current?'now':''}"><div class="qnum">${i+1}</div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.video_id===current?'NOW PLAYING · ':''}${esc(personName(x.added_by))}</div></div><div class="actions queue-actions"><button class="action-sm move-btn" data-up="${esc(x.id)}" title="Move up" ${i===0?'disabled':''}>↑</button><button class="action-sm move-btn" data-down="${esc(x.id)}" title="Move down" ${i===q.length-1?'disabled':''}>↓</button>${x.video_id!==current||state.isHost?`<button class="action-sm" data-play="${esc(x.id)}">Play</button>`:''}<button class="action-sm danger-sm" data-del="${esc(x.id)}">×</button></div></div>`).join(''):'<div class="empty">No videos yet. Add the first YouTube link.</div>'}</div></div>
+                <div id="sharedBody" class="collapsible-body ${state.sharedCollapsed?'collapsed':''}" aria-hidden="${state.sharedCollapsed?'true':'false'}"><div class="row"><input class="input" id="url" placeholder="Paste a YouTube link" inputmode="url"><button class="btn primary" id="add">Add to Queue</button></div><div class="queue" id="queueList">${q.length?q.map((x,i)=>`<div class="qitem ${x.video_id===current?'now':''}" draggable="true" data-drag-type="shared" data-drag-id="${esc(x.id)}"><div class="qnum drag-handle" title="Drag to reorder">⠿<span>${i+1}</span></div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.video_id===current?'NOW PLAYING · ':''}${esc(personName(x.added_by))}</div></div><div class="actions queue-actions"><button class="action-sm move-btn" data-up="${esc(x.id)}" title="Move up" ${i===0?'disabled':''}>↑</button><button class="action-sm move-btn" data-down="${esc(x.id)}" title="Move down" ${i===q.length-1?'disabled':''}>↓</button>${x.video_id!==current||state.isHost?`<button class="action-sm" data-play="${esc(x.id)}">Play</button>`:''}<button class="action-sm danger-sm" data-del="${esc(x.id)}">×</button></div></div>`).join(''):'<div class="empty">No videos yet. Add the first YouTube link.</div>'}</div></div>
       </section>
 
       <section class="main-section private-section card gap private-card">
@@ -191,19 +191,163 @@
     const stateEl=document.getElementById('playState');if(stateEl)stateEl.textContent=`${state.room.is_playing?'Playing':'Paused'} · ${current?'Video selected':'No video selected'}`;
     const play=document.getElementById('play');if(play)play.textContent=state.room.is_playing?'❚❚':'▶';
     const list=document.getElementById('queueList');
-    if(list)list.innerHTML=q.length?q.map((x,i)=>`<div class="qitem ${x.video_id===current?'now':''}"><div class="qnum">${i+1}</div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.video_id===current?'NOW PLAYING · ':''}${esc(personName(x.added_by))}</div></div><div class="actions queue-actions"><button class="action-sm move-btn" data-up="${esc(x.id)}" title="Move up" ${i===0?'disabled':''}>↑</button><button class="action-sm move-btn" data-down="${esc(x.id)}" title="Move down" ${i===q.length-1?'disabled':''}>↓</button>${x.video_id!==current||state.isHost?`<button class="action-sm" data-play="${esc(x.id)}">Play</button>`:''}<button class="action-sm danger-sm" data-del="${esc(x.id)}">×</button></div></div>`).join(''):'<div class="empty">No videos yet. Add the first YouTube link.</div>';
-    if(list){list.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>removeItem(b.dataset.del));list.querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>playQueueItem(b.dataset.play));list.querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.up,-1));list.querySelectorAll('[data-down]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.down,1));}
+    if(list)list.innerHTML=q.length?q.map((x,i)=>`<div class="qitem ${x.video_id===current?'now':''}" draggable="true" data-drag-type="shared" data-drag-id="${esc(x.id)}"><div class="qnum drag-handle" title="Drag to reorder">⠿<span>${i+1}</span></div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.video_id===current?'NOW PLAYING · ':''}${esc(personName(x.added_by))}</div></div><div class="actions queue-actions"><button class="action-sm move-btn" data-up="${esc(x.id)}" title="Move up" ${i===0?'disabled':''}>↑</button><button class="action-sm move-btn" data-down="${esc(x.id)}" title="Move down" ${i===q.length-1?'disabled':''}>↓</button>${x.video_id!==current||state.isHost?`<button class="action-sm" data-play="${esc(x.id)}">Play</button>`:''}<button class="action-sm danger-sm" data-del="${esc(x.id)}">×</button></div></div>`).join(''):'<div class="empty">No videos yet. Add the first YouTube link.</div>';
+    if(list){list.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>removeItem(b.dataset.del));list.querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>playQueueItem(b.dataset.play));list.querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.up,-1));list.querySelectorAll('[data-down]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.down,1));bindDragAndDrop(document);}
     updateEndPreview();
     renderPrivateList();
     updatePeopleUI();
     if(state.isHost&&current)ensureYouTubePlayer();
   }
+  function bindDragAndDrop(root=document){
+    const lists=[
+      {el:root.querySelector?.('#queueList'), type:'shared'},
+      {el:root.querySelector?.('#privateList'), type:'private'}
+    ];
+    lists.forEach(({el,type})=>{
+      if(!el)return;
+      el.querySelectorAll('[data-drag-type]').forEach(item=>{
+        item.addEventListener('dragstart',e=>{
+          state.drag={type,id:item.dataset.dragId};
+          item.classList.add('dragging');
+          e.dataTransfer.effectAllowed='move';
+          e.dataTransfer.setData('text/plain',item.dataset.dragId);
+        });
+        item.addEventListener('dragend',()=>{state.drag={type:null,id:null};item.classList.remove('dragging');el.querySelectorAll('.drag-over').forEach(x=>x.classList.remove('drag-over'));});
+        item.addEventListener('dragover',e=>{
+          if(state.drag.type!==type||state.drag.id===item.dataset.dragId)return;
+          e.preventDefault(); e.dataTransfer.dropEffect='move';
+          el.querySelectorAll('.drag-over').forEach(x=>x.classList.remove('drag-over')); item.classList.add('drag-over');
+        });
+        item.addEventListener('dragleave',()=>item.classList.remove('drag-over'));
+        item.addEventListener('drop',async e=>{
+          e.preventDefault();
+          const id=state.drag.id; item.classList.remove('drag-over'); state.drag={type:null,id:null};
+          if(!id||id===item.dataset.dragId)return;
+          if(type==='shared') await reorderQueueByDrop(id,item.dataset.dragId); else reorderPrivateByDrop(id,item.dataset.dragId);
+        });
+        enablePointerDrag(item,el,type);
+      });
+    });
+  }
+  function enablePointerDrag(item, list, type){
+    const handle=item.querySelector('.drag-handle'); if(!handle)return;
+    let timer=null, active=false, pointerId=null;
+    const cleanup=()=>{clearTimeout(timer);timer=null;active=false;pointerId=null;item.classList.remove('dragging');list.querySelectorAll('.drag-over').forEach(x=>x.classList.remove('drag-over'));};
+    handle.addEventListener('pointerdown',e=>{
+      if(e.pointerType==='mouse')return;
+      pointerId=e.pointerId;
+      timer=setTimeout(()=>{active=true;item.classList.add('dragging');try{handle.setPointerCapture(pointerId);}catch(_){}},280);
+    });
+    handle.addEventListener('pointermove',e=>{
+      if(!active)return;
+      e.preventDefault();
+      const target=document.elementFromPoint(e.clientX,e.clientY)?.closest('[data-drag-type]');
+      list.querySelectorAll('.drag-over').forEach(x=>x.classList.remove('drag-over'));
+      if(target&&target!==item&&target.dataset.dragType===type)target.classList.add('drag-over');
+    });
+    handle.addEventListener('pointerup',async e=>{
+      if(!active){cleanup();return;}
+      e.preventDefault();
+      const target=document.elementFromPoint(e.clientX,e.clientY)?.closest('[data-drag-type]');
+      const fromId=item.dataset.dragId, toId=target?.dataset.dragId;
+      cleanup();
+      if(!toId||toId===fromId)return;
+      if(type==='shared')await reorderQueueByDrop(fromId,toId);else reorderPrivateByDrop(fromId,toId);
+    });
+    handle.addEventListener('pointercancel',cleanup);
+  }
+  function reorderPrivateByDrop(fromId,toId){
+    const from=state.privateList.findIndex(x=>x.id===fromId), to=state.privateList.findIndex(x=>x.id===toId);
+    if(from<0||to<0||from===to)return;
+    const [item]=state.privateList.splice(from,1); state.privateList.splice(to,0,item); savePrivateList(); renderPrivateList();
+  }
+  async function reorderSharedQueue(fromId,toId){
+    if(state.busy)return false;
+    if(!fromId||!toId||fromId===toId)return false;
+    state.busy=true;
+    try{
+      const r=await getClient().rpc('reorder_queue_item',{
+        p_room_id:state.room.id,
+        p_item_id:fromId,
+        p_target_id:toId,
+        p_expected_version:Number(state.queueVersion||0)
+      });
+      if(r.error)throw r.error;
+      const payload=r.data&&Array.isArray(r.data)?r.data[0]:r.data;
+      const queue=payload?.queue;
+      if(!Array.isArray(queue))throw new Error('Invalid queue response from server.');
+      state.queue=queue;
+      state.queueVersion=Number(payload.queue_version||0);
+      const currentIndex=state.room.current_video_id?state.queue.findIndex(x=>x.video_id===state.room.current_video_id):-1;
+      const patch={current_index:currentIndex>=0?currentIndex:0,updated_at:new Date().toISOString(),queue_version:state.queueVersion};
+      const rr=await getClient().from('rooms').update(patch).eq('id',state.room.id).select().single();
+      if(!rr.error)state.room=rr.data;
+      updateRoomView();
+      await broadcast('queue',{queue:state.queue,queue_version:state.queueVersion});
+      if(currentIndex>=0)await broadcast('room',{current_index:currentIndex,queue_version:state.queueVersion});
+      return true;
+    }catch(e){
+      const msg=String(e?.message||e||'');
+      if(/QUEUE_VERSION_CONFLICT|Queue changed by another user/i.test(msg)){
+        await refreshQueue();
+        const rr=await getClient().from('rooms').select('*').eq('id',state.room.id).single();
+        if(!rr.error){state.room=rr.data;state.queueVersion=Number(rr.data.queue_version||0);updateRoomView();}
+        notify('Queue changed by another user. Refreshed — please drag again.','error');
+      }else notify(msg||'Could not reorder the shared queue.','error');
+      return false;
+    }finally{state.busy=false;}
+  }
+  async function reorderQueueByDrop(fromId,toId){return reorderSharedQueue(fromId,toId);}
+
+  async function moveQueueItem(id,direction){
+    if(state.busy)return;
+    const index=state.queue.findIndex(x=>x.id===id);
+    const targetIndex=index+direction;
+    if(index<0||targetIndex<0||targetIndex>=state.queue.length)return;
+    await reorderSharedQueue(id,state.queue[targetIndex].id);
+  }
+
+  async function shuffleQueue(){
+    if(state.queue.length<2)return notify('Add at least two videos to shuffle.');
+    if(state.busy)return;
+    const current=state.room.current_video_id;
+    const currentItem=state.queue.find(x=>x.video_id===current);
+    let rest=state.queue.filter(x=>x.video_id!==current);
+    for(let i=rest.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[rest[i],rest[j]]=[rest[j],rest[i]];}
+    const ordered=currentItem?[currentItem,...rest]:rest;
+    state.busy=true;
+    try{
+      const r=await getClient().rpc('shuffle_queue',{
+        p_room_id:state.room.id,
+        p_expected_version:Number(state.queueVersion||0),
+        p_ordered_ids:ordered.map(x=>x.id)
+      });
+      if(r.error)throw r.error;
+      const payload=r.data&&Array.isArray(r.data)?r.data[0]:r.data;
+      if(!Array.isArray(payload?.queue))throw new Error('Invalid shuffle response from server.');
+      state.queue=payload.queue;state.queueVersion=Number(payload.queue_version||0);
+      const currentIndex=state.room.current_video_id?state.queue.findIndex(x=>x.video_id===state.room.current_video_id):-1;
+      const rr=await getClient().from('rooms').update({current_index:currentIndex>=0?currentIndex:0,updated_at:new Date().toISOString(),queue_version:state.queueVersion}).eq('id',state.room.id).select().single();
+      if(!rr.error)state.room=rr.data;
+      updateRoomView();await broadcast('queue',{queue:state.queue,queue_version:state.queueVersion});
+      notify('Queue shuffled for everyone');
+    }catch(e){
+      const msg=String(e?.message||e||'');
+      if(/QUEUE_VERSION_CONFLICT|Queue changed by another user/i.test(msg)){
+        await refreshQueue();const rr=await getClient().from('rooms').select('*').eq('id',state.room.id).single();
+        if(!rr.error){state.room=rr.data;state.queueVersion=Number(rr.data.queue_version||0);updateRoomView();}
+        notify('Queue changed by another user. Refreshed — please shuffle again.','error');
+      }else notify(msg||'Could not shuffle the queue.','error');
+    }finally{state.busy=false;}
+  }
+
   function bindRoomControls(){
     document.getElementById('togglePrivate').onclick=()=>toggleListSection('private');document.getElementById('toggleShared').onclick=()=>toggleListSection('shared');document.getElementById('add').onclick=addLink;document.getElementById('shuffle').onclick=shuffleQueue;const privateAddBtn=document.getElementById('privateAdd'); if(privateAddBtn) privateAddBtn.onclick=(e)=>{e.preventDefault();addPrivateInput();};document.getElementById('privateSelectAll').onclick=selectAllPrivate;document.getElementById('uploadSelected').onclick=()=>uploadPrivate(false);document.getElementById('uploadAll').onclick=()=>uploadPrivate(true);document.getElementById('prev').onclick=()=>sendCommand('previous');document.getElementById('next').onclick=()=>sendCommand('next');document.getElementById('play').onclick=()=>sendCommand(state.room.is_playing?'pause':'play');document.getElementById('showQr').onclick=showQrModal;const chatSend=document.getElementById('roomChatSend');if(chatSend)chatSend.onclick=sendChat;const chatInput=document.getElementById('roomChatInput');if(chatInput)chatInput.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}});document.querySelectorAll('[data-emoji]').forEach(b=>b.onclick=()=>addEmoji(b.dataset.emoji));bindPointButtons();renderChatMessages();const fs=document.getElementById('fullscreenBtn');if(fs)fs.onclick=togglePlayerFullscreen;const previewTab=document.getElementById('endPreviewTab');if(previewTab)previewTab.onclick=()=>{const open=document.getElementById('endPreview')?.classList.contains('show');if(open)hideEndPreview();else{state.endPreviewItems=null;updateEndPreview();setEndPreviewOpen(true,false);}};const vol=document.getElementById('volume');if(vol){vol.oninput=()=>{const v=Number(vol.value);const label=document.getElementById('volumeValue');if(label)label.textContent=v+'%';if(state.playerReady&&state.player)try{state.player.setVolume(v);state.player.unMute();if(v===0)state.player.mute();}catch(_){}};}
     document.getElementById('url').addEventListener('keydown',e=>{if(e.key==='Enter')addLink();});
     document.getElementById('privateUrl').addEventListener('keydown',e=>{if(e.key==='Enter')addPrivateInput();});
     document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>removeItem(b.dataset.del));document.querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>playQueueItem(b.dataset.play));document.querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.up,-1));document.querySelectorAll('[data-down]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.down,1));
     const qr=document.getElementById('qr'); if(window.QRCode){new QRCode(qr,{text:roomUrl(state.room.code),width:150,height:150});} else qr.innerHTML='<div class="small qrtext">QR library unavailable.<br>Use the link below.</div>';
+    bindDragAndDrop(document);
   }
   function showQrModal(){const back=document.createElement('div');back.className='modalback';back.innerHTML=`<div class="modal center"><div class="brand">ALAMKAROK</div><h2>Join Room</h2><div id="modalQr" class="qr"></div><div class="code">${esc(state.room.code)}</div><div class="linkbox">${esc(roomUrl(state.room.code))}</div><button class="btn primary wide" id="closeQr">Close</button></div>`;document.body.appendChild(back);if(window.QRCode)new QRCode(document.getElementById('modalQr'),{text:roomUrl(state.room.code),width:220,height:220});back.querySelector('#closeQr').onclick=()=>back.remove();}
   function personName(id){const p=state.people.find(x=>x.id===id);return p?p.name:'Unknown';}
@@ -217,7 +361,7 @@
       if(!seen.has(key)){ const g={key,playlistId:x.playlist_id||null,title:x.playlist_title||'Individual Videos',items:[]}; seen.set(key,g);groups.push(g); }
       seen.get(key).items.push({x,i});
     });
-    const itemHtml=({x,i})=>`<div class="qitem private-item"><input class="private-check" type="checkbox" data-private-check="${esc(x.id)}" ${x.selected?'checked':''} aria-label="Select ${esc(x.title)}"><div class="qnum">${i+1}</div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.playlist_id?'Playlist · ':''}Private · not uploaded</div></div><div class="actions queue-actions"><button class="action-sm move-btn" data-private-up="${esc(x.id)}" ${i===0?'disabled':''}>↑</button><button class="action-sm move-btn" data-private-down="${esc(x.id)}" ${i===state.privateList.length-1?'disabled':''}>↓</button><button class="action-sm danger-sm" data-private-del="${esc(x.id)}">×</button></div></div>`;
+    const itemHtml=({x,i})=>`<div class="qitem private-item" draggable="true" data-drag-type="private" data-drag-id="${esc(x.id)}"><input class="private-check" type="checkbox" data-private-check="${esc(x.id)}" ${x.selected?'checked':''} aria-label="Select ${esc(x.title)}"><div class="qnum drag-handle" title="Drag to reorder">⠿<span>${i+1}</span></div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.playlist_id?'Playlist · ':''}Private · not uploaded</div></div><div class="actions queue-actions"><button class="action-sm move-btn" data-private-up="${esc(x.id)}" ${i===0?'disabled':''}>↑</button><button class="action-sm move-btn" data-private-down="${esc(x.id)}" ${i===state.privateList.length-1?'disabled':''}>↓</button><button class="action-sm danger-sm" data-private-del="${esc(x.id)}">×</button></div></div>`;
     list.innerHTML=groups.map(g=>{
       if(!g.playlistId) return g.items.map(itemHtml).join('');
       const collapsed=!!state.playlistCollapsed[g.playlistId];
@@ -228,6 +372,7 @@
     list.querySelectorAll('[data-private-up]').forEach(b=>b.onclick=()=>movePrivate(b.dataset.privateUp,-1));
     list.querySelectorAll('[data-private-down]').forEach(b=>b.onclick=()=>movePrivate(b.dataset.privateDown,1));
     list.querySelectorAll('[data-private-del]').forEach(b=>b.onclick=()=>deletePrivate(b.dataset.privateDel));
+    bindDragAndDrop(document);
   }
   function selectAllPrivate(){ const all=state.privateList.length>0 && state.privateList.every(x=>x.selected); state.privateList.forEach(x=>x.selected=!all); savePrivateList(); renderPrivateList(); }
   function movePrivate(id,direction){ const i=state.privateList.findIndex(x=>x.id===id), j=i+direction; if(i<0||j<0||j>=state.privateList.length)return; [state.privateList[i],state.privateList[j]]=[state.privateList[j],state.privateList[i]]; savePrivateList();renderPrivateList(); }

@@ -1314,3 +1314,14 @@ body{
 .point-options .btn{padding:10px 6px;font-size:12px}
 .point-close{width:100%;padding:9px;border-radius:9px;background:#172237;color:#aebbd0;border:1px solid #2b3b55}
 @media(max-width:780px){.chat-messages{height:180px}.person-with-points{padding:9px}.points-badge{font-size:10px}.give-point-btn{width:32px;height:32px}.room-chat{margin-top:12px}.chat-compose .btn{padding-inline:13px}}
+
+/* Drag-and-drop list reordering */
+.qitem[draggable="true"]{cursor:grab;touch-action:pan-y;transition:transform .16s ease,opacity .16s ease,border-color .16s ease,background .16s ease;}
+.qitem[draggable="true"]:active{cursor:grabbing}
+.qitem.dragging{opacity:.38;transform:scale(.985)}
+.qitem.drag-over{border-color:var(--accent)!important;background:#13233b!important;box-shadow:0 0 0 1px rgba(77,141,255,.22),0 8px 24px rgba(0,0,0,.18)}
+.drag-handle{display:flex!important;align-items:center;justify-content:center;gap:3px;cursor:grab;user-select:none;color:#71819a;background:#172237}
+.drag-handle:hover{color:#dce7f7;background:#1d2d46}
+.drag-handle span{font-size:12px;color:#cbd5e5}
+.private-item .drag-handle{font-size:16px}
+@media(max-width:780px){.drag-handle{font-size:15px}.qitem[draggable="true"]{touch-action:none}}
