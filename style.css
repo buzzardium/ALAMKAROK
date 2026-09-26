@@ -33,3 +33,15 @@
 .card:has(.collapsible-body.collapsed) .section-heading h2{font-size:24px;letter-spacing:.2px}
 .card:has(.collapsible-body.collapsed) .section-heading .muted{font-size:13px}
 .card:has(.collapsible-body.collapsed) .chevron{width:36px;height:36px}
+
+/* Playlist subsections inside My List */
+.playlist-subsection{border:1px solid var(--border);border-radius:14px;background:rgba(12,20,35,.45);overflow:hidden;margin:10px 0}
+.playlist-subhead{width:100%;display:grid;grid-template-columns:1fr auto 32px;align-items:center;gap:10px;border:0;background:#111c2e;color:var(--text);padding:13px 14px;text-align:left;cursor:pointer}
+.playlist-subtitle{font-weight:800;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.playlist-count{font-size:12px;color:var(--muted);white-space:nowrap}
+.playlist-chevron{width:30px;height:30px;display:grid;place-items:center;border:1px solid var(--border);border-radius:8px;background:#172237;color:#cbd5e5;font-size:12px}
+.playlist-subbody{max-height:5000px;opacity:1;overflow:hidden;transition:max-height .28s ease,opacity .18s ease}
+.playlist-subbody.collapsed{max-height:0;opacity:0}
+.playlist-subbody .qitem{border-radius:0;border-left:0;border-right:0;margin:0}
+.playlist-subsection.is-collapsed .playlist-subhead{min-height:62px}
+@media(max-width:780px){.playlist-subhead{grid-template-columns:1fr auto 30px}.playlist-subtitle{font-size:14px}.playlist-count{font-size:11px}}
