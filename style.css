@@ -1154,3 +1154,119 @@ body{
     height:30px !important;
   }
 }
+
+
+/* NEXT UP: physically outside the YouTube player element. */
+.player-card > .player-shell{
+  position:relative !important;
+  overflow:visible !important;
+  display:block !important;
+}
+.player-card > .player-shell > .playerbox{
+  display:block !important;
+  width:100% !important;
+  aspect-ratio:16 / 9 !important;
+  overflow:hidden !important;
+  border-radius:14px !important;
+}
+.player-card > .end-preview{
+  position:relative !important;
+  display:block !important;
+  width:100% !important;
+  margin:0 !important;
+  padding:0 !important;
+  inset:auto !important;
+  background:transparent !important;
+  border:0 !important;
+  opacity:1 !important;
+  transform:none !important;
+  overflow:visible !important;
+  z-index:2 !important;
+}
+.player-card > .end-preview .end-preview-tab{
+  position:relative !important;
+  display:flex !important;
+  width:112px !important;
+  height:30px !important;
+  margin:0 auto !important;
+  border:1px solid var(--border) !important;
+  border-top:0 !important;
+  border-radius:0 0 10px 10px !important;
+  background:#111c2e !important;
+  box-shadow:0 4px 12px rgba(0,0,0,.18) !important;
+}
+.player-card > .end-preview .end-preview-panel{
+  position:relative !important;
+  width:100% !important;
+  max-height:0 !important;
+  overflow:hidden !important;
+  margin:0 !important;
+  border:1px solid var(--border) !important;
+  border-top:0 !important;
+  border-radius:0 0 14px 14px !important;
+  background:#0d1625 !important;
+  padding:0 14px !important;
+  opacity:0 !important;
+  transform:translateY(-4px) !important;
+  transition:max-height .3s ease,opacity .22s ease,transform .3s ease,padding .3s ease !important;
+}
+.player-card > .end-preview.show .end-preview-panel{
+  max-height:360px !important;
+  padding:12px 14px !important;
+  opacity:1 !important;
+  transform:translateY(0) !important;
+}
+.player-card > .player-shell .fullscreen-btn{z-index:5 !important;}
+@media(max-width:780px){
+  .player-card > .end-preview .end-preview-tab{width:104px !important;height:30px !important;}
+}
+
+/* FINAL ROOM LAYOUT: large YouTube player, people below, QR at bottom */
+.room-screen{
+  max-width:1240px !important;
+}
+.roomgrid{
+  display:grid !important;
+  grid-template-columns:minmax(0,1fr) !important;
+  gap:18px !important;
+  margin-bottom:22px !important;
+}
+.player-column{
+  width:100% !important;
+  min-width:0 !important;
+}
+.player-card{
+  width:100% !important;
+  padding:16px !important;
+}
+.player-card > .player-shell,
+.player-card > .player-shell > .playerbox{
+  width:100% !important;
+}
+.player-card > .player-shell > .playerbox{
+  aspect-ratio:16 / 9 !important;
+}
+.room-sidebar{
+  width:100% !important;
+  min-width:0 !important;
+  display:flex !important;
+  flex-direction:column !important;
+  gap:14px !important;
+}
+.room-sidebar .card,
+.room-sidebar .card:last-child{
+  width:100% !important;
+  margin:0 !important;
+}
+.room-sidebar .qr{
+  margin:12px auto !important;
+}
+@media (min-width:1100px){
+  .roomgrid{gap:20px !important;}
+  .player-card{padding:18px !important;}
+}
+@media (max-width:780px){
+  .room-screen{max-width:none !important;}
+  .roomgrid{grid-template-columns:1fr !important;gap:14px !important;}
+  .room-sidebar{display:flex !important;flex-direction:column !important;gap:12px !important;}
+}
