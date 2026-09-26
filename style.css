@@ -1388,3 +1388,121 @@ body{
 }
 #togglePrivate.collapse-btn:active{transform:translateY(1px) scale(.98);}
 #togglePrivate.collapse-btn .chevron{color:inherit!important;background:transparent!important;border-color:transparent!important;}
+
+/* FINAL RESPONSIVE SECTION HEADER — prevent horizontal overflow on narrow screens */
+.main-section .section-title.section-toggle{
+  grid-template-columns:150px minmax(0,1fr) 150px!important;
+}
+@media (max-width:780px){
+  .main-section .section-title.section-toggle{
+    grid-template-columns:64px minmax(0,1fr) 96px!important;
+    gap:8px!important;
+  }
+  .main-section .section-title.section-toggle > .collapse-btn{
+    width:64px!important;
+    min-width:64px!important;
+    max-width:64px!important;
+    height:52px!important;
+    min-height:52px!important;
+    max-height:52px!important;
+    border-radius:13px!important;
+  }
+  .main-section .section-title.section-toggle > .section-action-btn{
+    width:96px!important;
+    min-width:96px!important;
+    max-width:96px!important;
+    height:52px!important;
+    min-height:52px!important;
+    max-height:52px!important;
+    border-radius:13px!important;
+  }
+  .main-section .section-title.section-toggle > .section-static-label{
+    min-width:0!important;
+    overflow:hidden!important;
+    text-overflow:ellipsis!important;
+    white-space:nowrap!important;
+    font-size:16px!important;
+  }
+}
+@media (max-width:430px){
+  .main-section .section-title.section-toggle{
+    grid-template-columns:52px minmax(0,1fr) 86px!important;
+    gap:6px!important;
+  }
+  .main-section .section-title.section-toggle > .collapse-btn{
+    width:52px!important;
+    min-width:52px!important;
+    max-width:52px!important;
+    height:48px!important;
+    min-height:48px!important;
+    max-height:48px!important;
+    padding:0!important;
+    border-radius:12px!important;
+  }
+  .main-section .section-title.section-toggle > .section-action-btn{
+    width:86px!important;
+    min-width:86px!important;
+    max-width:86px!important;
+    height:48px!important;
+    min-height:48px!important;
+    max-height:48px!important;
+    padding:0 6px!important;
+    border-radius:12px!important;
+    font-size:12px!important;
+  }
+  .main-section .section-title.section-toggle > .section-static-label{
+    font-size:15px!important;
+  }
+  .main-section .section-static-label .section-private{font-size:8px!important}
+}
+@media (max-width:340px){
+  .main-section .section-title.section-toggle{
+    grid-template-columns:46px minmax(0,1fr) 78px!important;
+    gap:5px!important;
+  }
+  .main-section .section-title.section-toggle > .collapse-btn{
+    width:46px!important;
+    min-width:46px!important;
+    max-width:46px!important;
+  }
+  .main-section .section-title.section-toggle > .section-action-btn{
+    width:78px!important;
+    min-width:78px!important;
+    max-width:78px!important;
+    font-size:11px!important;
+  }
+}
+
+
+/* RESPONSIVE SORTABLE DRAG — pointer-based, touch-safe */
+.qitem[data-drag-type="shared"], .qitem.private-item {
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.drag-handle {
+  touch-action: none !important;
+  -webkit-tap-highlight-color: transparent;
+  min-height: 34px;
+}
+.qitem.dragging {
+  opacity: .72 !important;
+  transform: scale(.995) translateZ(0) !important;
+  z-index: 20 !important;
+  box-shadow: 0 14px 32px rgba(0,0,0,.30) !important;
+}
+.qitem.drag-over {
+  border-color: var(--accent) !important;
+}
+@media (max-width:780px) {
+  .qitem[data-drag-type="shared"], .qitem.private-item {
+    touch-action: pan-y !important;
+  }
+  .drag-handle {
+    width: 36px;
+    min-width: 36px;
+    min-height: 40px;
+    border-radius: 10px;
+    touch-action: none !important;
+  }
+}

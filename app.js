@@ -198,126 +198,153 @@
     updatePeopleUI();
     if(state.isHost&&current)ensureYouTubePlayer();
   }
-  function captureDragRects(list){
-    const m=new Map();
-    if(!list)return m;
-    list.querySelectorAll('[data-drag-type]').forEach(el=>m.set(el.dataset.dragId,el.getBoundingClientRect()));
-    return m;
+  function dragItems(container,type){
+    if(!container)return [];
+    return [...container.querySelectorAll(`:scope > [data-drag-type="${type}"]`)];
   }
-  function clearDragPreview(list){
-    if(!list)return;
-    list.querySelectorAll('[data-drag-type]').forEach(el=>{
+  function clearDragTransforms(container){
+    if(!container)return;
+    container.querySelectorAll('[data-drag-type]').forEach(el=>{
       el.style.transition='';
       el.style.transform='';
-      el.classList.remove('drag-shift');
+      el.classList.remove('drag-shift','drag-over');
     });
   }
-  function applyDragPreview(list,fromId,toId,type){
-    if(!list||!fromId||!toId||fromId===toId)return;
-    const items=[...list.querySelectorAll(`[data-drag-type="${type}"]`)];
-    const from=items.findIndex(x=>x.dataset.dragId===fromId), to=items.findIndex(x=>x.dataset.dragId===toId);
+  function dragContainerFor(item,type){
+    if(type==='private') return item.closest('.playlist-subbody') || item.parentElement;
+    return item.closest('#queueList');
+  }
+  function applyLiveDragPreview(container,type,fromId,toId){
+    const items=dragItems(container,type);
+    const from=items.findIndex(x=>x.dataset.dragId===fromId);
+    const to=items.findIndex(x=>x.dataset.dragId===toId);
     if(from<0||to<0||from===to)return;
     const dragged=items[from];
-    const shift=dragged.getBoundingClientRect().height + 9;
-    clearDragPreview(list);
+    const gap=parseFloat(getComputedStyle(container).rowGap||getComputedStyle(container).gap||'8')||8;
+    const shift=dragged.getBoundingClientRect().height+gap;
+    items.forEach(x=>{x.style.transition='transform 180ms cubic-bezier(.2,.8,.2,1)';x.style.transform='';});
     if(from<to){
-      for(let i=from+1;i<=to;i++) items[i].style.transform=`translateY(${-shift}px)`;
+      for(let i=from+1;i<=to;i++)items[i].style.transform=`translate3d(0,${-shift}px,0)`;
     }else{
-      for(let i=to;i<from;i++) items[i].style.transform=`translateY(${shift}px)`;
+      for(let i=to;i<from;i++)items[i].style.transform=`translate3d(0,${shift}px,0)`;
     }
+  }
+  function bindDragAndDrop(root=document){
+    const queue=root.querySelector?.('#queueList');
+    if(queue)bindSortableContainer(queue,'shared');
+    const privateList=root.querySelector?.('#privateList');
+    if(privateList){
+      privateList.querySelectorAll('.playlist-subbody').forEach(el=>bindSortableContainer(el,'private'));
+      // Standalone private videos live directly in #privateList.
+      bindSortableContainer(privateList,'private',true);
+    }
+  }
+  function bindSortableContainer(container,type,includeNested=false){
+    if(!container)return;
+    container.dataset.dragBound='1';
+    const items=()=>includeNested
+      ? [...container.children].filter(x=>x.matches?.('[data-drag-type="private"]'))
+      : dragItems(container,type);
+    items().forEach(item=>enablePointerDrag(item,container,type));
+  }
+  function enablePointerDrag(item,container,type){
+    if(item.dataset.pointerDragBound==='1')return;
+    item.dataset.pointerDragBound='1';
+    const handle=item.querySelector('.drag-handle');
+    let pointerId=null,startX=0,startY=0,active=false,timer=null,currentTarget=null;
+    const isTouch=()=>pointerId!==null && (item.__dragPointerType==='touch'||item.__dragPointerType==='pen');
+    const sortableItems=()=>includeContainerItems(container,type);
+    function includeContainerItems(c,t){return [...c.querySelectorAll(`:scope > [data-drag-type="${t}"]`)];}
+    function clear(){
+      if(timer){clearTimeout(timer);timer=null;}
+      if(pointerId!==null){try{item.releasePointerCapture(pointerId);}catch(_){} }
+      clearDragTransforms(container);
+      item.classList.remove('dragging');
+      pointerId=null;active=false;currentTarget=null;state.drag={type:null,id:null};
+    }
+    function finish(){
+      const pid=pointerId;
+      if(pid!==null){document.removeEventListener('pointermove',onMove,true);document.removeEventListener('pointerup',onUp,true);document.removeEventListener('pointercancel',onCancel,true);}
+    }
+    function activate(){
+      if(active)return;
+      active=true;
+      state.drag={type,id:item.dataset.dragId};
+      item.classList.add('dragging');
+      try{item.setPointerCapture(pointerId);}catch(_){}
+    }
+    function onMove(e){
+      if(e.pointerId!==pointerId)return;
+      const dx=e.clientX-startX,dy=e.clientY-startY;
+      if(!active){
+        if(isTouch()){
+          if(Math.hypot(dx,dy)<5)return;
+          if(timer){clearTimeout(timer);timer=null;}
+          activate();
+        }else{
+          if(Math.hypot(dx,dy)<4)return;
+          activate();
+        }
+      }
+      if(active)e.preventDefault();
+      const el=document.elementFromPoint(e.clientX,e.clientY)?.closest('[data-drag-type]');
+      const target=(el&&container.contains(el)&&el!==item&&el.dataset.dragType===type)?el:null;
+      if(target!==currentTarget){
+        currentTarget=target;
+        clearDragTransforms(container);
+        if(target){target.classList.add('drag-over');applyLiveDragPreview(container,type,item.dataset.dragId,target.dataset.dragId);}
+      }
+    }
+    async function onUp(e){
+      if(e.pointerId!==pointerId)return;
+      const target=currentTarget || (active?document.elementFromPoint(e.clientX,e.clientY)?.closest('[data-drag-type]'):null);
+      const fromId=item.dataset.dragId;
+      const toId=(target&&target!==item&&container.contains(target)&&target.dataset.dragType===type)?target.dataset.dragId:null;
+      const wasActive=active;
+      finish();clear();
+      if(!wasActive||!toId||toId===fromId)return;
+      if(type==='shared')await reorderQueueByDrop(fromId,toId);else reorderPrivateByDrop(fromId,toId);
+    }
+    function onCancel(e){if(e.pointerId===pointerId){finish();clear();}}
+    function down(e){
+      if(e.button!==undefined&&e.button!==0)return;
+      if(e.target.closest('button,input,select,textarea,a'))return;
+      const touch=e.pointerType==='touch'||e.pointerType==='pen';
+      // On touch, use the dedicated handle so normal swiping still scrolls the page.
+      if(touch && (!handle || !e.target.closest('.drag-handle')))return;
+      pointerId=e.pointerId;item.__dragPointerType=e.pointerType;startX=e.clientX;startY=e.clientY;currentTarget=null;
+      if(touch){
+        timer=setTimeout(()=>activate(),110);
+      }
+      document.addEventListener('pointermove',onMove,true);
+      document.addEventListener('pointerup',onUp,true);
+      document.addEventListener('pointercancel',onCancel,true);
+      if(touch)e.preventDefault();
+    }
+    item.addEventListener('pointerdown',down,{passive:false});
   }
   function animateListReorder(list,beforeRects){
     if(!list||!beforeRects||!beforeRects.size)return;
     const els=[...list.querySelectorAll('[data-drag-type]')];
     els.forEach(el=>{
-      const old=beforeRects.get(el.dataset.dragId); if(!old)return;
-      const now=el.getBoundingClientRect();
-      const dx=old.left-now.left, dy=old.top-now.top;
+      const old=beforeRects.get(el.dataset.dragId);if(!old)return;
+      const now=el.getBoundingClientRect();const dx=old.left-now.left,dy=old.top-now.top;
       if(Math.abs(dx)<1&&Math.abs(dy)<1)return;
-      el.style.transition='none';
-      el.style.transform=`translate(${dx}px,${dy}px)`;
-      el.getBoundingClientRect();
-      requestAnimationFrame(()=>{
-        el.style.transition='transform 280ms cubic-bezier(.22,.8,.25,1)';
-        el.style.transform='translate(0,0)';
-      });
+      el.style.transition='none';el.style.transform=`translate3d(${dx}px,${dy}px,0)`;el.getBoundingClientRect();
+      requestAnimationFrame(()=>{el.style.transition='transform 300ms cubic-bezier(.2,.8,.2,1)';el.style.transform='translate3d(0,0,0)';});
       const done=()=>{el.style.transition='';el.style.transform='';el.removeEventListener('transitionend',done);};
       el.addEventListener('transitionend',done);
     });
   }
-  function bindDragAndDrop(root=document){
-    const lists=[
-      {el:root.querySelector?.('#queueList'),type:'shared'},
-      {el:root.querySelector?.('#privateList'),type:'private'}
-    ];
-    lists.forEach(({el,type})=>{
-      if(!el)return;
-      el.querySelectorAll('[data-drag-type]').forEach(item=>{
-        item.draggable=false;
-        enablePointerDrag(item,el,type);
-      });
-    });
-  }
-
-  function enablePointerDrag(item,list,type){
-    let pointerId=null,startX=0,startY=0,active=false;
-    const clearOver=()=>list.querySelectorAll('.drag-over').forEach(x=>x.classList.remove('drag-over'));
-    const cleanup=()=>{
-      if(pointerId!==null){try{item.releasePointerCapture(pointerId);}catch(_){} }
-      pointerId=null;active=false;item.classList.remove('dragging');clearOver();clearDragPreview(list);
-      state.drag={type:null,id:null};
-      document.removeEventListener('pointermove',onMove,true);
-      document.removeEventListener('pointerup',onUp,true);
-      document.removeEventListener('pointercancel',onCancel,true);
-    };
-    const begin=()=>{
-      if(active)return;
-      active=true;state.drag={type,id:item.dataset.dragId};item.classList.add('dragging');
-      try{item.setPointerCapture(pointerId);}catch(_){}
-    };
-    const onMove=(e)=>{
-      if(e.pointerId!==pointerId)return;
-      const dx=e.clientX-startX,dy=e.clientY-startY;
-      if(!active){
-        if(Math.hypot(dx,dy)<7)return;
-        begin();
-      }
-      e.preventDefault();
-      const target=document.elementFromPoint(e.clientX,e.clientY)?.closest('[data-drag-type]');
-      clearOver();
-      if(target&&target!==item&&list.contains(target)&&target.dataset.dragType===type){
-        target.classList.add('drag-over');
-        applyDragPreview(list,item.dataset.dragId,target.dataset.dragId,type);
-      }
-    };
-    const onUp=async(e)=>{
-      if(e.pointerId!==pointerId)return;
-      const wasActive=active;
-      const target=wasActive?document.elementFromPoint(e.clientX,e.clientY)?.closest('[data-drag-type]'):null;
-      const fromId=item.dataset.dragId;
-      const toId=(target&&target!==item&&list.contains(target)&&target.dataset.dragType===type)?target.dataset.dragId:null;
-      cleanup();
-      if(!wasActive||!toId||toId===fromId)return;
-      if(type==='shared')await reorderQueueByDrop(fromId,toId);else reorderPrivateByDrop(fromId,toId);
-    };
-    const onCancel=(e)=>{if(e.pointerId===pointerId)cleanup();};
-    item.addEventListener('pointerdown',e=>{
-      if(e.button!==undefined&&e.button!==0)return;
-      if(e.target.closest('button,input,select,textarea,a'))return;
-      pointerId=e.pointerId;startX=e.clientX;startY=e.clientY;
-      state.drag={type,id:item.dataset.dragId};
-      document.addEventListener('pointermove',onMove,true);
-      document.addEventListener('pointerup',onUp,true);
-      document.addEventListener('pointercancel',onCancel,true);
-    });
+  function captureDragRects(list){
+    const m=new Map();if(!list)return m;
+    list.querySelectorAll('[data-drag-type]').forEach(el=>m.set(el.dataset.dragId,el.getBoundingClientRect()));return m;
   }
   function reorderPrivateByDrop(fromId,toId){
-    const from=state.privateList.findIndex(x=>x.id===fromId), to=state.privateList.findIndex(x=>x.id===toId);
+    const from=state.privateList.findIndex(x=>x.id===fromId),to=state.privateList.findIndex(x=>x.id===toId);
     if(from<0||to<0||from===to)return;
-    const list=document.getElementById('privateList');
-    const before=captureDragRects(list);
-    const [item]=state.privateList.splice(from,1); state.privateList.splice(to,0,item);
-    savePrivateList(); renderPrivateList();
+    const list=document.getElementById('privateList'),before=captureDragRects(list);
+    const [item]=state.privateList.splice(from,1);state.privateList.splice(to,0,item);savePrivateList();renderPrivateList();
     animateListReorder(document.getElementById('privateList'),before);
   }
   async function reorderSharedQueue(fromId,toId){
