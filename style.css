@@ -1031,3 +1031,37 @@ body{
   .main-section .section-static-label .section-count{font-size:12px!important}
   .main-section .section-static-label .section-private{font-size:9px!important}
 }
+
+/* FIX: private playlist rows must keep checkbox + number + thumbnail + content + actions on one row */
+.private-item{
+  grid-template-columns:28px 34px 56px minmax(0,1fr) auto !important;
+  align-items:center !important;
+}
+.private-item .queue-actions{
+  display:flex !important;
+  flex-direction:row !important;
+  flex-wrap:nowrap !important;
+  align-items:center !important;
+  justify-content:flex-end !important;
+  gap:7px !important;
+  min-width:max-content !important;
+}
+.private-item .min0{min-width:0 !important;}
+.private-item .action-sm{flex:0 0 auto !important;}
+@media(max-width:780px){
+  .private-item{
+    grid-template-columns:24px 28px 48px minmax(0,1fr) auto !important;
+    gap:8px !important;
+  }
+  .private-item .queue-actions{gap:5px !important;}
+  .private-item .action-sm{min-width:30px !important;padding:6px 7px !important;}
+}
+@media(max-width:560px){
+  .private-item{
+    grid-template-columns:22px 26px 44px minmax(0,1fr) auto !important;
+    gap:6px !important;
+    padding:7px !important;
+  }
+  .private-item .thumb{width:44px !important;height:32px !important;}
+  .private-item .queue-actions{gap:4px !important;}
+}
