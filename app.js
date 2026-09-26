@@ -213,14 +213,11 @@
   }
 
   function enablePointerDrag(item,list,type){
-    const handle=item.querySelector('.drag-handle'); if(!handle)return;
-    let pointerId=null, startX=0, startY=0, active=false, timer=null;
+    let pointerId=null,startX=0,startY=0,active=false;
     const clearOver=()=>list.querySelectorAll('.drag-over').forEach(x=>x.classList.remove('drag-over'));
     const cleanup=()=>{
-      clearTimeout(timer); timer=null;
-      if(pointerId!==null){try{handle.releasePointerCapture(pointerId);}catch(_){} }
-      pointerId=null; active=false;
-      item.classList.remove('dragging'); clearOver();
+      if(pointerId!==null){try{item.releasePointerCapture(pointerId);}catch(_){} }
+      pointerId=null;active=false;item.classList.remove('dragging');clearOver();
       state.drag={type:null,id:null};
       document.removeEventListener('pointermove',onMove,true);
       document.removeEventListener('pointerup',onUp,true);
@@ -228,40 +225,39 @@
     };
     const begin=()=>{
       if(active)return;
-      active=true; state.drag={type,id:item.dataset.dragId};
-      item.classList.add('dragging');
-      try{handle.setPointerCapture(pointerId);}catch(_){}
+      active=true;state.drag={type,id:item.dataset.dragId};item.classList.add('dragging');
+      try{item.setPointerCapture(pointerId);}catch(_){}
     };
     const onMove=(e)=>{
       if(e.pointerId!==pointerId)return;
       const dx=e.clientX-startX,dy=e.clientY-startY;
       if(!active){
-        if(Math.hypot(dx,dy)<6)return;
-        clearTimeout(timer); timer=null; begin();
+        if(Math.hypot(dx,dy)<7)return;
+        begin();
       }
       e.preventDefault();
       const target=document.elementFromPoint(e.clientX,e.clientY)?.closest('[data-drag-type]');
       clearOver();
-      if(target&&target!==item&&target.parentElement===list&&target.dataset.dragType===type)target.classList.add('drag-over');
+      if(target&&target!==item&&list.contains(target)&&target.dataset.dragType===type){
+        target.classList.add('drag-over');
+      }
     };
     const onUp=async(e)=>{
       if(e.pointerId!==pointerId)return;
       const wasActive=active;
       const target=wasActive?document.elementFromPoint(e.clientX,e.clientY)?.closest('[data-drag-type]'):null;
       const fromId=item.dataset.dragId;
-      const toId=(target&&target.parentElement===list&&target.dataset.dragType===type)?target.dataset.dragId:null;
+      const toId=(target&&target!==item&&list.contains(target)&&target.dataset.dragType===type)?target.dataset.dragId:null;
       cleanup();
-      if(!wasActive)return;
-      if(!toId||toId===fromId)return;
-      if(type==='shared')await reorderQueueByDrop(fromId,toId); else reorderPrivateByDrop(fromId,toId);
+      if(!wasActive||!toId||toId===fromId)return;
+      if(type==='shared')await reorderQueueByDrop(fromId,toId);else reorderPrivateByDrop(fromId,toId);
     };
     const onCancel=(e)=>{if(e.pointerId===pointerId)cleanup();};
-    handle.addEventListener('pointerdown',e=>{
+    item.addEventListener('pointerdown',e=>{
       if(e.button!==undefined&&e.button!==0)return;
-      pointerId=e.pointerId; startX=e.clientX; startY=e.clientY;
-      e.preventDefault();
-      if(e.pointerType==='mouse') begin();
-      else timer=setTimeout(begin,180);
+      if(e.target.closest('button,input,select,textarea,a'))return;
+      pointerId=e.pointerId;startX=e.clientX;startY=e.clientY;
+      state.drag={type,id:item.dataset.dragId};
       document.addEventListener('pointermove',onMove,true);
       document.addEventListener('pointerup',onUp,true);
       document.addEventListener('pointercancel',onCancel,true);

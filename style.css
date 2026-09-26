@@ -1352,3 +1352,18 @@ body{
   .qitem.private-item{grid-template-columns:24px 28px 48px minmax(0,1fr) auto!important}
   .qitem.private-item .actions{justify-self:end}
 }
+
+
+/* Reliable pointer drag: drag anywhere on a queue row, except its controls. */
+.qitem[data-drag-type="shared"],
+.qitem.private-item{
+  cursor:grab!important;
+  touch-action:pan-y!important;
+  -webkit-user-select:none!important;
+  user-select:none!important;
+}
+.qitem[data-drag-type="shared"]:active,
+.qitem.private-item:active{cursor:grabbing!important}
+.qitem.dragging{opacity:.42!important;transform:scale(.992)!important}
+.qitem.drag-over{border-color:var(--accent)!important;background:#13233b!important;box-shadow:0 0 0 1px rgba(77,141,255,.22),0 8px 24px rgba(0,0,0,.18)!important}
+.qitem button,.qitem input{user-select:auto;-webkit-user-select:auto}
