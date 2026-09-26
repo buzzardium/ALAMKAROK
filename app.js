@@ -6,7 +6,7 @@
   const colors = ['#9b5cff','#28a8ff','#18c9a0','#ff9d2e','#ff4f5f','#f1d21b','#ef67c7','#7bd66f','#54d8e8','#ff6f9c'];
   const state = {
     room:null, me:null, people:[], queue:[], isHost:false, channel:null,
-    player:null, playerReady:false, ytReady:false, ytLoading:false, currentPosition:0, busy:false, privateList:[], privateBusy:false
+    player:null, playerReady:false, ytReady:false, ytLoading:false, currentPosition:0, busy:false
   };
 
   function esc(v){ return String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -27,8 +27,8 @@
     return null;
   }
   function ytThumb(id){ return `https://i.ytimg.com/vi/${encodeURIComponent(id)}/hqdefault.jpg`; }
-  function privateKey(){ return state.room&&state.me ? `alamkarok-private-v2-${state.room.code}-${state.me.user_id||state.me.id}` : null; }
-  function loadPrivateList(){ state.privateList=[]; try{ const k=privateKey(); if(!k)return; const raw=localStorage.getItem(k); const parsed=raw?JSON.parse(raw):[]; state.privateList=Array.isArray(parsed)?parsed.filter(x=>x&&x.video_id):[]; }catch(_){state.privateList=[];} }
+  function privateKey(){ return state.room&&state.me ? `alamkarok-private-${state.room.id}-${state.me.id}` : null; }
+  function loadPrivateList(){ try{ const raw=privateKey()&&localStorage.getItem(privateKey()); state.privateList=raw?JSON.parse(raw):[]; if(!Array.isArray(state.privateList))state.privateList=[]; }catch(_){state.privateList=[];} }
   function savePrivateList(){ try{ const k=privateKey(); if(k)localStorage.setItem(k,JSON.stringify(state.privateList)); }catch(_){} }
   function playlistId(value){ try{ const u=new URL(value); return u.hostname.includes('youtube.com')&&u.searchParams.get('list') ? u.searchParams.get('list') : null; }catch(_){ return null; } }
   function privateItemId(){ return 'p-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8); }
@@ -163,7 +163,7 @@
     if(state.isHost&&current)ensureYouTubePlayer();
   }
   function bindRoomControls(){
-    document.getElementById('add').onclick=addLink;document.getElementById('shuffle').onclick=shuffleQueue;const privateAddBtn=document.getElementById('privateAdd'); if(privateAddBtn) privateAddBtn.onclick=(e)=>{e.preventDefault();addPrivateInput();};document.getElementById('privateSelectAll').onclick=selectAllPrivate;document.getElementById('uploadSelected').onclick=()=>uploadPrivate(false);document.getElementById('uploadAll').onclick=()=>uploadPrivate(true);document.getElementById('prev').onclick=()=>sendCommand('previous');document.getElementById('next').onclick=()=>sendCommand('next');document.getElementById('play').onclick=()=>sendCommand(state.room.is_playing?'pause':'play');document.getElementById('showQr').onclick=showQrModal;const vol=document.getElementById('volume');if(vol){vol.oninput=()=>{const v=Number(vol.value);const label=document.getElementById('volumeValue');if(label)label.textContent=v+'%';if(state.playerReady&&state.player)try{state.player.setVolume(v);state.player.unMute();if(v===0)state.player.mute();}catch(_){}};}
+    document.getElementById('add').onclick=addLink;document.getElementById('shuffle').onclick=shuffleQueue;document.getElementById('privateAdd').onclick=addPrivateInput;document.getElementById('privateSelectAll').onclick=selectAllPrivate;document.getElementById('uploadSelected').onclick=()=>uploadPrivate(false);document.getElementById('uploadAll').onclick=()=>uploadPrivate(true);document.getElementById('prev').onclick=()=>sendCommand('previous');document.getElementById('next').onclick=()=>sendCommand('next');document.getElementById('play').onclick=()=>sendCommand(state.room.is_playing?'pause':'play');document.getElementById('showQr').onclick=showQrModal;const vol=document.getElementById('volume');if(vol){vol.oninput=()=>{const v=Number(vol.value);const label=document.getElementById('volumeValue');if(label)label.textContent=v+'%';if(state.playerReady&&state.player)try{state.player.setVolume(v);state.player.unMute();if(v===0)state.player.mute();}catch(_){}};}
     document.getElementById('url').addEventListener('keydown',e=>{if(e.key==='Enter')addLink();});
     document.getElementById('privateUrl').addEventListener('keydown',e=>{if(e.key==='Enter')addPrivateInput();});
     document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>removeItem(b.dataset.del));document.querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>playQueueItem(b.dataset.play));document.querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.up,-1));document.querySelectorAll('[data-down]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.down,1));
@@ -188,25 +188,34 @@
     const input=document.getElementById('privateUrl');
     const value=(input?.value||'').trim();
     if(!value)return notify('Paste a YouTube video or playlist link.','error');
-    const listId=playlistId(value);
-    if(listId){
+    state.privateBusy=true;
+    try{
+      const listId=playlistId(value);
+      if(listId){
+        input.value='';
+        await importYouTubePlaylist(listId);
+        return;
+      }
+      const id=ytId(value);
+      if(!id)throw new Error('Enter a valid YouTube video link.');
+      if(state.privateList.some(x=>x.video_id===id))return notify('That video is already in your private list.','info');
+
+      // Add immediately. Do not make the private list depend on YouTube oEmbed/CORS.
+      const item={id:privateItemId(),video_id:id,title:'YouTube video',thumbnail:ytThumb(id),selected:false};
+      state.privateList.push(item);
+      savePrivateList();
       input.value='';
-      try{ await importYouTubePlaylist(listId); }catch(e){ notify(e.message||'Could not import playlist','error'); }
-      return;
-    }
-    const id=ytId(value);
-    if(!id)return notify('Enter a valid YouTube video link.','error');
-    if(state.privateList.some(x=>x.video_id===id))return notify('That video is already in your private list.','info');
-    const item={id:privateItemId(),video_id:id,title:'YouTube video',thumbnail:ytThumb(id),selected:false};
-    state.privateList.push(item);
-    savePrivateList();
-    if(input)input.value='';
-    renderPrivateList();
-    notify('Added to My List');
-    videoTitle(id).then(title=>{
-      const found=state.privateList.find(x=>x.id===item.id);
-      if(found&&title&&title!=='YouTube video'){found.title=title;savePrivateList();renderPrivateList();}
-    }).catch(()=>{});
+      renderPrivateList();
+      notify('Added to My List');
+
+      // Try to improve the title in the background; failure does not affect the list.
+      videoTitle(id).then(title=>{
+        const found=state.privateList.find(x=>x.id===item.id);
+        if(found && title){found.title=title;savePrivateList();renderPrivateList();}
+      }).catch(()=>{});
+    }catch(e){
+      notify(e.message||'Could not add to My List','error');
+    }finally{state.privateBusy=false;}
   }
   async function importYouTubePlaylist(listId){
     const key=String(cfg.YOUTUBE_API_KEY||'').trim();
