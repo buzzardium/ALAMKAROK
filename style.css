@@ -1270,3 +1270,15 @@ body{
   .roomgrid{grid-template-columns:1fr !important;gap:14px !important;}
   .room-sidebar{display:flex !important;flex-direction:column !important;gap:12px !important;}
 }
+
+/* QR intentionally lives at the very bottom of the room page. */
+.room-qr-bottom{
+  width:100% !important;
+  margin-top:18px !important;
+}
+.room-qr-bottom .qr{
+  margin:14px auto !important;
+}
+@media(max-width:780px){
+  .room-qr-bottom{margin-top:14px !important;}
+}
