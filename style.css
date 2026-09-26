@@ -26,3 +26,10 @@
 .player-shell:fullscreen .end-preview-count{font-size:12px}
 .player-shell:fullscreen .fullscreen-btn{right:18px;bottom:18px}
 @media(max-width:780px){.end-preview{top:3%;right:3%;width:min(52%,300px);padding:9px 10px}.end-preview-item{font-size:10px}.end-preview-count{font-size:10px;margin-top:6px;padding-top:6px}.fullscreen-btn{width:34px;height:34px;right:8px;bottom:8px}}
+
+/* Collapsed section presentation */
+.collapsible-body.collapsed{display:none;max-height:0;opacity:0}
+.card:has(.collapsible-body.collapsed) .section-heading{min-height:76px;padding:12px 14px;border-radius:12px;background:rgba(23,34,55,.55)}
+.card:has(.collapsible-body.collapsed) .section-heading h2{font-size:24px;letter-spacing:.2px}
+.card:has(.collapsible-body.collapsed) .section-heading .muted{font-size:13px}
+.card:has(.collapsible-body.collapsed) .chevron{width:36px;height:36px}
