@@ -165,6 +165,7 @@
   function bindRoomControls(){
     document.getElementById('add').onclick=addLink;document.getElementById('shuffle').onclick=shuffleQueue;document.getElementById('privateAdd').onclick=addPrivateInput;document.getElementById('privateSelectAll').onclick=selectAllPrivate;document.getElementById('uploadSelected').onclick=()=>uploadPrivate(false);document.getElementById('uploadAll').onclick=()=>uploadPrivate(true);document.getElementById('prev').onclick=()=>sendCommand('previous');document.getElementById('next').onclick=()=>sendCommand('next');document.getElementById('play').onclick=()=>sendCommand(state.room.is_playing?'pause':'play');document.getElementById('showQr').onclick=showQrModal;const vol=document.getElementById('volume');if(vol){vol.oninput=()=>{const v=Number(vol.value);const label=document.getElementById('volumeValue');if(label)label.textContent=v+'%';if(state.playerReady&&state.player)try{state.player.setVolume(v);state.player.unMute();if(v===0)state.player.mute();}catch(_){}};}
     document.getElementById('url').addEventListener('keydown',e=>{if(e.key==='Enter')addLink();});
+    document.getElementById('privateUrl').addEventListener('keydown',e=>{if(e.key==='Enter')addPrivateInput();});
     document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>removeItem(b.dataset.del));document.querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>playQueueItem(b.dataset.play));document.querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.up,-1));document.querySelectorAll('[data-down]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.down,1));
     const qr=document.getElementById('qr'); if(window.QRCode){new QRCode(qr,{text:roomUrl(state.room.code),width:150,height:150});} else qr.innerHTML='<div class="small qrtext">QR library unavailable.<br>Use the link below.</div>';
   }
@@ -184,15 +185,37 @@
   function deletePrivate(id){ state.privateList=state.privateList.filter(x=>x.id!==id);savePrivateList();renderPrivateList(); }
   async function addPrivateInput(){
     if(state.privateBusy)return;
-    const input=document.getElementById('privateUrl'), value=input.value.trim(); if(!value)return notify('Paste a YouTube video or playlist link.','error');
+    const input=document.getElementById('privateUrl');
+    const value=(input?.value||'').trim();
+    if(!value)return notify('Paste a YouTube video or playlist link.','error');
     state.privateBusy=true;
     try{
       const listId=playlistId(value);
-      if(listId){ await importYouTubePlaylist(listId); input.value=''; return; }
-      const id=ytId(value); if(!id)throw new Error('Enter a valid YouTube video or playlist link.');
+      if(listId){
+        input.value='';
+        await importYouTubePlaylist(listId);
+        return;
+      }
+      const id=ytId(value);
+      if(!id)throw new Error('Enter a valid YouTube video link.');
       if(state.privateList.some(x=>x.video_id===id))return notify('That video is already in your private list.','info');
-      const title=await videoTitle(id); state.privateList.push({id:privateItemId(),video_id:id,title,thumbnail:ytThumb(id),selected:false});savePrivateList();input.value='';renderPrivateList();notify('Added to My List');
-    }catch(e){notify(e.message||'Could not add to My List','error');}finally{state.privateBusy=false;}
+
+      // Add immediately. Do not make the private list depend on YouTube oEmbed/CORS.
+      const item={id:privateItemId(),video_id:id,title:'YouTube video',thumbnail:ytThumb(id),selected:false};
+      state.privateList.push(item);
+      savePrivateList();
+      input.value='';
+      renderPrivateList();
+      notify('Added to My List');
+
+      // Try to improve the title in the background; failure does not affect the list.
+      videoTitle(id).then(title=>{
+        const found=state.privateList.find(x=>x.id===item.id);
+        if(found && title){found.title=title;savePrivateList();renderPrivateList();}
+      }).catch(()=>{});
+    }catch(e){
+      notify(e.message||'Could not add to My List','error');
+    }finally{state.privateBusy=false;}
   }
   async function importYouTubePlaylist(listId){
     const key=String(cfg.YOUTUBE_API_KEY||'').trim();
