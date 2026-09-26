@@ -231,17 +231,15 @@
   }
   function bindDragAndDrop(root=document){
     const queue=root.querySelector?.('#queueList');
-    if(queue)bindSortableContainer(queue,'shared');
+    if(queue) bindSortableContainer(queue,'shared');
     const privateList=root.querySelector?.('#privateList');
     if(privateList){
       privateList.querySelectorAll('.playlist-subbody').forEach(el=>bindSortableContainer(el,'private'));
-      // Standalone private videos live directly in #privateList.
       bindSortableContainer(privateList,'private',true);
     }
   }
   function bindSortableContainer(container,type,includeNested=false){
     if(!container)return;
-    container.dataset.dragBound='1';
     const items=()=>includeNested
       ? [...container.children].filter(x=>x.matches?.('[data-drag-type="private"]'))
       : dragItems(container,type);
@@ -251,77 +249,87 @@
     if(item.dataset.pointerDragBound==='1')return;
     item.dataset.pointerDragBound='1';
     const handle=item.querySelector('.drag-handle');
-    let pointerId=null,startX=0,startY=0,active=false,timer=null,currentTarget=null;
-    const isTouch=()=>pointerId!==null && (item.__dragPointerType==='touch'||item.__dragPointerType==='pen');
-    const sortableItems=()=>includeContainerItems(container,type);
-    function includeContainerItems(c,t){return [...c.querySelectorAll(`:scope > [data-drag-type="${t}"]`)];}
-    function clear(){
-      if(timer){clearTimeout(timer);timer=null;}
-      if(pointerId!==null){try{item.releasePointerCapture(pointerId);}catch(_){} }
-      clearDragTransforms(container);
+    let pointerId=null,startX=0,startY=0,active=false,currentTarget=null;
+    const touchPointer=()=>item.__dragPointerType==='touch'||item.__dragPointerType==='pen';
+    const items=()=>includeContainerItems(container,type);
+    function includeContainerItems(c,t){return [...c.children].filter(el=>el.matches?.(`[data-drag-type="${t}"]`));}
+    function clearPreview(){
+      items().forEach(el=>{el.style.transition='';el.style.transform='';el.classList.remove('drag-over');});
       item.classList.remove('dragging');
-      pointerId=null;active=false;currentTarget=null;state.drag={type:null,id:null};
+      currentTarget=null;
     }
-    function finish(){
-      const pid=pointerId;
-      if(pid!==null){document.removeEventListener('pointermove',onMove,true);document.removeEventListener('pointerup',onUp,true);document.removeEventListener('pointercancel',onCancel,true);}
+    function cleanup(){
+      document.removeEventListener('pointermove',onMove,true);
+      document.removeEventListener('pointerup',onUp,true);
+      document.removeEventListener('pointercancel',onCancel,true);
+      try{if(pointerId!==null)item.releasePointerCapture(pointerId);}catch(_){ }
+      clearPreview();
+      state.drag={type:null,id:null};
+      pointerId=null;active=false;
     }
     function activate(){
       if(active)return;
       active=true;
       state.drag={type,id:item.dataset.dragId};
       item.classList.add('dragging');
-      try{item.setPointerCapture(pointerId);}catch(_){}
+      try{item.setPointerCapture(pointerId);}catch(_){ }
+    }
+    function findTarget(clientY){
+      const list=items().filter(el=>el!==item);
+      if(!list.length)return null;
+      let best=null,bestDist=Infinity;
+      for(const el of list){
+        const r=el.getBoundingClientRect();
+        const center=r.top+r.height/2;
+        const d=Math.abs(clientY-center);
+        if(d<bestDist){bestDist=d;best=el;}
+      }
+      return best;
+    }
+    function preview(target){
+      const all=items();
+      all.forEach(el=>{el.style.transition='transform 160ms cubic-bezier(.2,.8,.2,1)';el.style.transform='';el.classList.remove('drag-over');});
+      if(!target)return;
+      target.classList.add('drag-over');
+      const from=all.indexOf(item),to=all.indexOf(target);
+      if(from<0||to<0||from===to)return;
+      const shift=item.getBoundingClientRect().height+8;
+      if(from<to) for(let i=from+1;i<=to;i++) all[i].style.transform=`translate3d(0,${-shift}px,0)`;
+      else for(let i=to;i<from;i++) all[i].style.transform=`translate3d(0,${shift}px,0)`;
     }
     function onMove(e){
       if(e.pointerId!==pointerId)return;
       const dx=e.clientX-startX,dy=e.clientY-startY;
       if(!active){
-        if(isTouch()){
-          if(Math.hypot(dx,dy)<5)return;
-          if(timer){clearTimeout(timer);timer=null;}
-          activate();
-        }else{
-          if(Math.hypot(dx,dy)<4)return;
-          activate();
-        }
+        if(Math.hypot(dx,dy)<6)return;
+        activate();
       }
-      if(active)e.preventDefault();
-      const el=document.elementFromPoint(e.clientX,e.clientY)?.closest('[data-drag-type]');
-      const target=(el&&container.contains(el)&&el!==item&&el.dataset.dragType===type)?el:null;
-      if(target!==currentTarget){
-        currentTarget=target;
-        clearDragTransforms(container);
-        if(target){target.classList.add('drag-over');applyLiveDragPreview(container,type,item.dataset.dragId,target.dataset.dragId);}
-      }
+      e.preventDefault();
+      const target=findTarget(e.clientY);
+      if(target!==currentTarget){currentTarget=target;preview(target);}
     }
     async function onUp(e){
       if(e.pointerId!==pointerId)return;
-      const target=currentTarget || (active?document.elementFromPoint(e.clientX,e.clientY)?.closest('[data-drag-type]'):null);
+      const target=currentTarget||findTarget(e.clientY);
       const fromId=item.dataset.dragId;
-      const toId=(target&&target!==item&&container.contains(target)&&target.dataset.dragType===type)?target.dataset.dragId:null;
-      const wasActive=active;
-      finish();clear();
-      if(!wasActive||!toId||toId===fromId)return;
+      const toId=target?.dataset.dragId||null;
+      const shouldMove=active&&toId&&toId!==fromId;
+      cleanup();
+      if(!shouldMove)return;
       if(type==='shared')await reorderQueueByDrop(fromId,toId);else reorderPrivateByDrop(fromId,toId);
     }
-    function onCancel(e){if(e.pointerId===pointerId){finish();clear();}}
-    function down(e){
+    function onCancel(e){if(e.pointerId===pointerId)cleanup();}
+    function onDown(e){
       if(e.button!==undefined&&e.button!==0)return;
       if(e.target.closest('button,input,select,textarea,a'))return;
-      const touch=e.pointerType==='touch'||e.pointerType==='pen';
-      // On touch, use the dedicated handle so normal swiping still scrolls the page.
-      if(touch && (!handle || !e.target.closest('.drag-handle')))return;
+      if((e.pointerType==='touch'||e.pointerType==='pen') && (!handle||!e.target.closest('.drag-handle')))return;
       pointerId=e.pointerId;item.__dragPointerType=e.pointerType;startX=e.clientX;startY=e.clientY;currentTarget=null;
-      if(touch){
-        timer=setTimeout(()=>activate(),110);
-      }
       document.addEventListener('pointermove',onMove,true);
       document.addEventListener('pointerup',onUp,true);
       document.addEventListener('pointercancel',onCancel,true);
-      if(touch)e.preventDefault();
+      if(e.pointerType==='touch'||e.pointerType==='pen')e.preventDefault();
     }
-    item.addEventListener('pointerdown',down,{passive:false});
+    item.addEventListener('pointerdown',onDown,{passive:false});
   }
   function animateListReorder(list,beforeRects){
     if(!list||!beforeRects||!beforeRects.size)return;
