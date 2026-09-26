@@ -845,3 +845,45 @@ body{
   .roomgrid{gap:12px}
   .main-section{margin-top:16px!important;padding:12px!important;border-radius:14px!important}
 }
+
+/* DESKTOP TWO-PANE ROOM: player left, shared queue right */
+@media (min-width: 1000px){
+  .room-screen{width:min(1400px,100%);max-width:1400px;padding:18px 24px}
+  .room-screen > .top{grid-area:top}
+  .room-screen > .roomgrid{display:contents}
+  .room-screen > .roomgrid > .player-column{grid-area:player;min-width:0}
+  .room-screen > .roomgrid > .room-sidebar{grid-area:people;min-width:0;display:grid;grid-template-columns:1fr 1fr;gap:12px;align-self:start}
+  .room-screen > .shared-section{grid-area:shared;min-width:0;margin-top:0!important;max-height:calc(100vh - 108px);overflow:hidden}
+  .room-screen > .private-section{grid-area:private;min-width:0}
+  .room-screen > .footer{grid-area:footer}
+  .room-screen{
+    display:grid;
+    grid-template-columns:minmax(0,1.55fr) minmax(360px,.9fr);
+    grid-template-areas:
+      "top top"
+      "player shared"
+      "people shared"
+      "private private"
+      "footer footer";
+    column-gap:18px;
+    row-gap:14px;
+    align-items:start;
+  }
+  .room-screen > .top{margin-bottom:0}
+  .player-card{height:100%;padding:12px}
+  .player-shell{width:100%}
+  .player-shell .playerbox{width:100%;aspect-ratio:16/9}
+  .main-section{margin-top:0!important;padding:14px!important}
+  .shared-section .collapsible-body{overflow:auto;max-height:calc(100vh - 235px);padding-right:2px}
+  .shared-section:has(.collapsible-body.collapsed){max-height:none}
+  .room-sidebar .card{margin-bottom:0}
+}
+
+@media (min-width:1000px) and (max-width:1200px){
+  .room-screen{grid-template-columns:minmax(0,1.35fr) minmax(320px,.85fr);padding:16px}
+}
+
+/* Keep the mobile/tablet layout stacked */
+@media (max-width:999px){
+  .room-screen{max-width:1050px}
+}
