@@ -145,16 +145,12 @@
   function renderRoom(){
     const current=state.room.current_video_id;const q=state.queue;
     app.innerHTML=`<div class="wrap room-screen"><div class="top"><div><div class="brand">ALAMKAROK</div><div class="small">Room <b>${esc(state.room.code)}</b> · <span id="peopleCount">${state.people.length}</span> people</div></div><div class="actions"><span class="badge"><span class="dot" style="background:${esc(state.me.color)}"></span>${esc(state.me.name)}</span><button class="btn" id="showQr">QR</button></div></div>
-      <div class="roomgrid player-only-grid">
+      <div class="roomgrid">
         <section class="player-column">
-          <div class="card player-card"><div class="player player-shell" id="playerShell"><div id="player" class="playerbox"><div class="playerplaceholder" id="playerPlaceholder">${state.isHost?(current?'Loading YouTube player…':'Add a YouTube video to start playback.'):'Host is playing the video on their phone'}</div></div>${state.isHost?`<div class="end-preview" id="endPreview" aria-hidden="true"><div class="end-preview-title">NEXT UP</div><div class="end-preview-list" id="endPreviewList"></div><div class="end-preview-count" id="endPreviewCount"></div></div><button class="fullscreen-btn" id="fullscreenBtn" type="button" title="Fullscreen" aria-label="Fullscreen">⛶</button>`:''}</div><div class="controls"><button class="control" id="prev" title="Previous">⏮</button><button class="control main" id="play" title="Play/Pause">${state.room.is_playing?'❚❚':'▶'}</button><button class="control" id="next" title="Next">⏭</button></div>${state.isHost?`<div class="volume-control"><span>🔊</span><input id="volume" class="range" type="range" min="0" max="100" value="80" aria-label="Host volume"><span id="volumeValue">80%</span></div>`:''}<div class="small center" id="playState">${state.room.is_playing?'Playing':'Paused'} · ${current?'Video selected':'No video selected'}</div></div>
+          <div class="card player-card"><div class="player player-shell" id="playerShell"><div id="player" class="playerbox"><div class="playerplaceholder" id="playerPlaceholder">${state.isHost?(current?'Loading YouTube player…':'Add a YouTube video to start playback.'):'Host is playing the video on their phone'}</div></div>${state.isHost?`<div class="end-preview" id="endPreview" aria-hidden="true"><button class="end-preview-tab" id="endPreviewTab" type="button" aria-expanded="false"><span>NEXT UP</span><span class="end-preview-tab-chevron">⌃</span></button><div class="end-preview-panel"><div class="end-preview-list" id="endPreviewList"></div><div class="end-preview-count" id="endPreviewCount"></div></div></div><button class="fullscreen-btn" id="fullscreenBtn" type="button" title="Fullscreen" aria-label="Fullscreen">⛶</button>`:''}</div><div class="controls"><button class="control" id="prev" title="Previous">⏮</button><button class="control main" id="play" title="Play/Pause">${state.room.is_playing?'❚❚':'▶'}</button><button class="control" id="next" title="Next">⏭</button></div>${state.isHost?`<div class="volume-control"><span>🔊</span><input id="volume" class="range" type="range" min="0" max="100" value="80" aria-label="Host volume"><span id="volumeValue">80%</span></div>`:''}<div class="small center" id="playState">${state.room.is_playing?'Playing':'Paused'} · ${current?'Video selected':'No video selected'}</div></div>
         </section>
+        <aside class="room-sidebar"><div class="card"><div class="section-title"><h2>People in Room</h2><span class="badge">${state.isHost?'HOST':'GUEST'}</span></div><div class="people" id="peopleList">${state.people.map(p=>`<div class="person"><span class="dot" style="background:${esc(p.color)}"></span><span>${esc(p.name)}${p.id===state.me.id?' <span class="muted">(You)</span>':''}${p.user_id===state.room.host_id?' 👑':''}</span></div>`).join('')}</div></div><div class="card gap"><div class="section-title"><h2>Room QR</h2></div><div id="qr" class="qr"></div><div class="small center">Scan to join</div><div class="linkbox">${esc(roomUrl(state.room.code))}</div></div></aside>
       </div>
-
-      <section class="people-section card gap">
-        <div class="section-title"><h2>People in Room <span class="section-count">(<span id="peopleCountSection">${state.people.length}</span>)</span></h2><span class="badge">${state.isHost?'HOST':'GUEST'}</span></div>
-        <div class="people people-grid" id="peopleList">${state.people.map(p=>`<div class="person"><span class="dot" style="background:${esc(p.color)}"></span><span>${esc(p.name)}${p.id===state.me.id?' <span class="muted">(You)</span>':''}${p.user_id===state.room.host_id?' 👑':''}</span></div>`).join('')}</div>
-      </section>
 
       <section class="main-section shared-section card gap">
         <div class="section-title section-toggle"><button class="btn collapse-btn" id="toggleShared" data-collapse="shared" aria-expanded="${state.sharedCollapsed?'false':'true'}" aria-label="Collapse shared queue"><span class="chevron" aria-hidden="true">${state.sharedCollapsed?'▼':'▲'}</span></button><div class="section-static-label">SHARED QUEUE <span class="section-count">(<span id="queueCount">${q.length}</span>)</span></div><button class="btn green section-action-btn" id="shuffle">🔀 Shuffle</button></div>
@@ -166,14 +162,6 @@
                 <div id="privateBody" class="collapsible-body ${state.privateCollapsed?'collapsed':''}" aria-hidden="${state.privateCollapsed?'true':'false'}"><div class="row"><input class="input" id="privateUrl" placeholder="Paste a YouTube video or playlist link" inputmode="url"><button class="btn primary" id="privateAdd">Add to My List</button></div><div class="small private-help">Build your own list first. Select one, several, or all songs, then send them to the shared queue.</div><div class="queue" id="privateList"></div><div class="private-actions"><button class="btn green" id="uploadSelected">Upload Selected</button><button class="btn" id="uploadAll">Upload All</button></div></div>
       </section>
 
-      <section class="room-share-section card gap">
-        <div class="room-share-grid">
-          <div class="room-share-code"><div class="room-share-label">ROOM CODE</div><div class="room-code-value">${esc(state.room.code)}</div></div>
-          <div class="room-share-qr"><div class="room-share-label">SCAN TO JOIN</div><div id="qr" class="qr"></div></div>
-          <div class="room-share-link"><div class="room-share-label">ROOM LINK</div><div class="room-link-row"><div class="linkbox">${esc(roomUrl(state.room.code))}</div><button class="btn" id="copyRoomLink" type="button">Copy</button></div></div>
-        </div>
-      </section>
-
       <div class="footer">Everyone can add links and control playback. Only the host displays YouTube.</div></div>`;
     bindRoomControls();
     if(state.isHost&&state.room.current_video_id)ensureYouTubePlayer();
@@ -182,7 +170,7 @@
   function updateRoomView(){
     if(!document.querySelector('.room-screen')){renderRoom();return;}
     const current=state.room.current_video_id,q=state.queue;
-    const count=document.getElementById('peopleCount');if(count)count.textContent=state.people.length;const sectionCount=document.getElementById('peopleCountSection');if(sectionCount)sectionCount.textContent=state.people.length;
+    const count=document.getElementById('peopleCount');if(count)count.textContent=state.people.length;
     const qc=document.getElementById('queueCount');if(qc)qc.textContent=q.length;
     const stateEl=document.getElementById('playState');if(stateEl)stateEl.textContent=`${state.room.is_playing?'Playing':'Paused'} · ${current?'Video selected':'No video selected'}`;
     const play=document.getElementById('play');if(play)play.textContent=state.room.is_playing?'❚❚':'▶';
@@ -195,7 +183,7 @@
     if(state.isHost&&current)ensureYouTubePlayer();
   }
   function bindRoomControls(){
-    document.getElementById('togglePrivate').onclick=()=>toggleListSection('private');document.getElementById('toggleShared').onclick=()=>toggleListSection('shared');document.getElementById('add').onclick=addLink;document.getElementById('shuffle').onclick=shuffleQueue;const privateAddBtn=document.getElementById('privateAdd'); if(privateAddBtn) privateAddBtn.onclick=(e)=>{e.preventDefault();addPrivateInput();};document.getElementById('privateSelectAll').onclick=selectAllPrivate;document.getElementById('uploadSelected').onclick=()=>uploadPrivate(false);document.getElementById('uploadAll').onclick=()=>uploadPrivate(true);document.getElementById('prev').onclick=()=>sendCommand('previous');document.getElementById('next').onclick=()=>sendCommand('next');document.getElementById('play').onclick=()=>sendCommand(state.room.is_playing?'pause':'play');document.getElementById('showQr').onclick=showQrModal;const copyRoomLink=document.getElementById('copyRoomLink');if(copyRoomLink)copyRoomLink.onclick=async()=>{try{await navigator.clipboard.writeText(roomUrl(state.room.code));notify('Room link copied');}catch(_){notify('Could not copy the room link','error');}};const fs=document.getElementById('fullscreenBtn');if(fs)fs.onclick=togglePlayerFullscreen;const vol=document.getElementById('volume');if(vol){vol.oninput=()=>{const v=Number(vol.value);const label=document.getElementById('volumeValue');if(label)label.textContent=v+'%';if(state.playerReady&&state.player)try{state.player.setVolume(v);state.player.unMute();if(v===0)state.player.mute();}catch(_){}};}
+    document.getElementById('togglePrivate').onclick=()=>toggleListSection('private');document.getElementById('toggleShared').onclick=()=>toggleListSection('shared');document.getElementById('add').onclick=addLink;document.getElementById('shuffle').onclick=shuffleQueue;const privateAddBtn=document.getElementById('privateAdd'); if(privateAddBtn) privateAddBtn.onclick=(e)=>{e.preventDefault();addPrivateInput();};document.getElementById('privateSelectAll').onclick=selectAllPrivate;document.getElementById('uploadSelected').onclick=()=>uploadPrivate(false);document.getElementById('uploadAll').onclick=()=>uploadPrivate(true);document.getElementById('prev').onclick=()=>sendCommand('previous');document.getElementById('next').onclick=()=>sendCommand('next');document.getElementById('play').onclick=()=>sendCommand(state.room.is_playing?'pause':'play');document.getElementById('showQr').onclick=showQrModal;const fs=document.getElementById('fullscreenBtn');if(fs)fs.onclick=togglePlayerFullscreen;const previewTab=document.getElementById('endPreviewTab');if(previewTab)previewTab.onclick=()=>setEndPreviewOpen(!document.getElementById('endPreview')?.classList.contains('show'));const vol=document.getElementById('volume');if(vol){vol.oninput=()=>{const v=Number(vol.value);const label=document.getElementById('volumeValue');if(label)label.textContent=v+'%';if(state.playerReady&&state.player)try{state.player.setVolume(v);state.player.unMute();if(v===0)state.player.mute();}catch(_){}};}
     document.getElementById('url').addEventListener('keydown',e=>{if(e.key==='Enter')addLink();});
     document.getElementById('privateUrl').addEventListener('keydown',e=>{if(e.key==='Enter')addPrivateInput();});
     document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>removeItem(b.dataset.del));document.querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>playQueueItem(b.dataset.play));document.querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.up,-1));document.querySelectorAll('[data-down]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.down,1));
@@ -337,7 +325,7 @@
     if(!state.isHost)return;
     const idx=Number.isInteger(state.room.current_index)?state.room.current_index:state.queue.findIndex(x=>x.video_id===state.room.current_video_id);
     const next=state.queue[idx+1];
-    if(next){ await performPlayback('load',next.video_id,0,true); notify('Autoplay: next video'); return true; }
+    if(next){ await performPlayback('load',next.video_id,0,true); notify('Autoplay: next video'); }
     else {
       const patch={is_playing:false,position_seconds:0,updated_at:new Date().toISOString()};
       const r=await getClient().from('rooms').update(patch).eq('id',state.room.id).select().single();
@@ -345,7 +333,6 @@
       updateRoomView();
       await broadcast('room',patch);
       notify('Queue finished');
-      return false;
     }
   }
   async function sendCommand(action){await broadcast('command',{from:state.me.id,action});if(state.isHost)await handleCommandBroadcast({from:state.me.id,action});}
@@ -375,24 +362,18 @@
     list.innerHTML=remaining.slice(0,8).map((x,i)=>`<div class="end-preview-item"><span>${i+1}</span><span>${esc(x.title||'YouTube video')}</span></div>`).join('');
     count.textContent=remaining.length===0?'Nothing remaining':`${remaining.length} remaining`;
   }
-  function showEndPreview(){
-    const overlay=document.getElementById('endPreview');
-    if(!overlay)return;
-    updateEndPreview();
-    overlay.classList.remove('show');
-    void overlay.offsetWidth;
-    overlay.classList.add('show');
-    overlay.setAttribute('aria-hidden','false');
+  function setEndPreviewOpen(open,autoClose=false){
+    const panel=document.getElementById('endPreview');
+    const tab=document.getElementById('endPreviewTab');
+    if(!panel||!tab)return;
+    panel.classList.toggle('show',open);
+    panel.setAttribute('aria-hidden',open?'false':'true');
+    tab.setAttribute('aria-expanded',open?'true':'false');
     clearTimeout(endPreviewTimer);
-    endPreviewTimer=setTimeout(()=>{overlay.classList.remove('show');overlay.setAttribute('aria-hidden','true');},25000);
+    if(open&&autoClose)endPreviewTimer=setTimeout(()=>setEndPreviewOpen(false),25000);
   }
-  function hideEndPreview(){
-    const overlay=document.getElementById('endPreview');
-    if(!overlay)return;
-    clearTimeout(endPreviewTimer);
-    overlay.classList.remove('show');
-    overlay.setAttribute('aria-hidden','true');
-  }
+  function showEndPreview(){updateEndPreview();setEndPreviewOpen(true,true);}
+  function hideEndPreview(){setEndPreviewOpen(false);}
   async function togglePlayerFullscreen(){
     const shell=document.getElementById('playerShell');
     if(!shell)return;
@@ -456,10 +437,7 @@
             else state.player.cueVideoById({videoId:state.room.current_video_id,startSeconds:p});
           },
           onStateChange:async e=>{
-            if(e.data===YT.PlayerState.ENDED){
-              const advanced=await advanceAfterEnd();
-              if(advanced)showEndPreview();
-            }
+            if(e.data===YT.PlayerState.ENDED){showEndPreview();await advanceAfterEnd();}
             else if(e.data===YT.PlayerState.PLAYING){
               state.room.is_playing=true;state.room.position_seconds=currentTime();await broadcast('room',{is_playing:true,position_seconds:state.room.position_seconds});
             }else if(e.data===YT.PlayerState.PAUSED){
