@@ -135,8 +135,8 @@
   function renderRoom(){
     const current=state.room.current_video_id;const q=state.queue;
     app.innerHTML=`<div class="wrap room-screen"><div class="top"><div><div class="brand">ALAMKAROK</div><div class="small">Room <b>${esc(state.room.code)}</b> · <span id="peopleCount">${state.people.length}</span> people</div></div><div class="actions"><span class="badge"><span class="dot" style="background:${esc(state.me.color)}"></span>${esc(state.me.name)}</span><button class="btn" id="showQr">QR</button></div></div>
-      <div class="roomgrid"><section><div class="card"><div class="player"><div id="player" class="playerbox"><div class="playerplaceholder" id="playerPlaceholder">${state.isHost?(current?'Loading YouTube player…':'Add a YouTube video to start playback.'):'Host is playing the video on their phone'}</div></div></div><div class="controls"><button class="control" id="prev" title="Previous">⏮</button><button class="control main" id="play" title="Play/Pause">${state.room.is_playing?'❚❚':'▶'}</button><button class="control" id="next" title="Next">⏭</button></div><div class="small center" id="playState">${state.room.is_playing?'Playing':'Paused'} · ${current?'Video selected':'No video selected'}</div></div>
-      <div class="card gap"><div class="section-title"><h2>Shared Queue <span class="muted">(<span id="queueCount">${q.length}</span>)</span></h2><button class="btn green" id="shuffle">🔀 Shuffle</button></div><div class="row"><input class="input" id="url" placeholder="Paste a YouTube link" inputmode="url"><button class="btn primary" id="add">Add to Queue</button></div><div class="queue" id="queueList">${q.length?q.map((x,i)=>`<div class="qitem ${x.video_id===current?'now':''}"><div class="qnum">${i+1}</div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.video_id===current?'NOW PLAYING · ':''}${esc(personName(x.added_by))}</div></div><div class="actions">${x.video_id!==current||state.isHost?`<button class="action-sm" data-play="${esc(x.id)}">Play</button>`:''}<button class="action-sm danger-sm" data-del="${esc(x.id)}">×</button></div></div>`).join(''):'<div class="empty">No videos yet. Add the first YouTube link.</div>'}</div></div></section>
+      <div class="roomgrid"><section><div class="card"><div class="player"><div id="player" class="playerbox"><div class="playerplaceholder" id="playerPlaceholder">${state.isHost?(current?'Loading YouTube player…':'Add a YouTube video to start playback.'):'Host is playing the video on their phone'}</div></div></div><div class="controls"><button class="control" id="prev" title="Previous">⏮</button><button class="control main" id="play" title="Play/Pause">${state.room.is_playing?'❚❚':'▶'}</button><button class="control" id="next" title="Next">⏭</button></div>${state.isHost?`<div class="volume-control"><span>🔊</span><input id="volume" class="range" type="range" min="0" max="100" value="80" aria-label="Host volume"><span id="volumeValue">80%</span></div>`:''}<div class="small center" id="playState">${state.room.is_playing?'Playing':'Paused'} · ${current?'Video selected':'No video selected'}</div></div>
+      <div class="card gap"><div class="section-title"><h2>Shared Queue <span class="muted">(<span id="queueCount">${q.length}</span>)</span></h2><button class="btn green" id="shuffle">🔀 Shuffle</button></div><div class="row"><input class="input" id="url" placeholder="Paste a YouTube link" inputmode="url"><button class="btn primary" id="add">Add to Queue</button></div><div class="queue" id="queueList">${q.length?q.map((x,i)=>`<div class="qitem ${x.video_id===current?'now':''}"><div class="qnum">${i+1}</div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.video_id===current?'NOW PLAYING · ':''}${esc(personName(x.added_by))}</div></div><div class="actions queue-actions"><button class="action-sm move-btn" data-up="${esc(x.id)}" title="Move up" ${i===0?'disabled':''}>↑</button><button class="action-sm move-btn" data-down="${esc(x.id)}" title="Move down" ${i===q.length-1?'disabled':''}>↓</button>${x.video_id!==current||state.isHost?`<button class="action-sm" data-play="${esc(x.id)}">Play</button>`:''}<button class="action-sm danger-sm" data-del="${esc(x.id)}">×</button></div></div>`).join(''):'<div class="empty">No videos yet. Add the first YouTube link.</div>'}</div></div></section>
       <aside><div class="card"><div class="section-title"><h2>People in Room</h2><span class="badge">${state.isHost?'HOST':'GUEST'}</span></div><div class="people" id="peopleList">${state.people.map(p=>`<div class="person"><span class="dot" style="background:${esc(p.color)}"></span><span>${esc(p.name)}${p.id===state.me.id?' <span class="muted">(You)</span>':''}${p.user_id===state.room.host_id?' 👑':''}</span></div>`).join('')}</div></div><div class="card gap"><div class="section-title"><h2>Room QR</h2></div><div id="qr" class="qr"></div><div class="small center">Scan to join</div><div class="linkbox">${esc(roomUrl(state.room.code))}</div></div></aside></div><div class="footer">Everyone can add links and control playback. Only the host displays YouTube.</div></div>`;
     bindRoomControls();
     if(state.isHost&&state.room.current_video_id)ensureYouTubePlayer();
@@ -150,25 +150,84 @@
     const stateEl=document.getElementById('playState');if(stateEl)stateEl.textContent=`${state.room.is_playing?'Playing':'Paused'} · ${current?'Video selected':'No video selected'}`;
     const play=document.getElementById('play');if(play)play.textContent=state.room.is_playing?'❚❚':'▶';
     const list=document.getElementById('queueList');
-    if(list)list.innerHTML=q.length?q.map((x,i)=>`<div class="qitem ${x.video_id===current?'now':''}"><div class="qnum">${i+1}</div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.video_id===current?'NOW PLAYING · ':''}${esc(personName(x.added_by))}</div></div><div class="actions">${x.video_id!==current||state.isHost?`<button class="action-sm" data-play="${esc(x.id)}">Play</button>`:''}<button class="action-sm danger-sm" data-del="${esc(x.id)}">×</button></div></div>`).join(''):'<div class="empty">No videos yet. Add the first YouTube link.</div>';
-    if(list){list.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>removeItem(b.dataset.del));list.querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>playQueueItem(b.dataset.play));}
+    if(list)list.innerHTML=q.length?q.map((x,i)=>`<div class="qitem ${x.video_id===current?'now':''}"><div class="qnum">${i+1}</div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.video_id===current?'NOW PLAYING · ':''}${esc(personName(x.added_by))}</div></div><div class="actions queue-actions"><button class="action-sm move-btn" data-up="${esc(x.id)}" title="Move up" ${i===0?'disabled':''}>↑</button><button class="action-sm move-btn" data-down="${esc(x.id)}" title="Move down" ${i===q.length-1?'disabled':''}>↓</button>${x.video_id!==current||state.isHost?`<button class="action-sm" data-play="${esc(x.id)}">Play</button>`:''}<button class="action-sm danger-sm" data-del="${esc(x.id)}">×</button></div></div>`).join(''):'<div class="empty">No videos yet. Add the first YouTube link.</div>';
+    if(list){list.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>removeItem(b.dataset.del));list.querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>playQueueItem(b.dataset.play));list.querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.up,-1));list.querySelectorAll('[data-down]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.down,1));}
     const people=document.getElementById('peopleList');if(people)people.innerHTML=state.people.map(p=>`<div class="person"><span class="dot" style="background:${esc(p.color)}"></span><span>${esc(p.name)}${p.id===state.me.id?' <span class="muted">(You)</span>':''}${p.user_id===state.room.host_id?' 👑':''}</span></div>`).join('');
     if(state.isHost&&current)ensureYouTubePlayer();
   }
   function bindRoomControls(){
-    document.getElementById('add').onclick=addLink;document.getElementById('shuffle').onclick=shuffleQueue;document.getElementById('prev').onclick=()=>sendCommand('previous');document.getElementById('next').onclick=()=>sendCommand('next');document.getElementById('play').onclick=()=>sendCommand(state.room.is_playing?'pause':'play');document.getElementById('showQr').onclick=showQrModal;
+    document.getElementById('add').onclick=addLink;document.getElementById('shuffle').onclick=shuffleQueue;document.getElementById('prev').onclick=()=>sendCommand('previous');document.getElementById('next').onclick=()=>sendCommand('next');document.getElementById('play').onclick=()=>sendCommand(state.room.is_playing?'pause':'play');document.getElementById('showQr').onclick=showQrModal;const vol=document.getElementById('volume');if(vol){vol.oninput=()=>{const v=Number(vol.value);const label=document.getElementById('volumeValue');if(label)label.textContent=v+'%';if(state.playerReady&&state.player)try{state.player.setVolume(v);state.player.unMute();if(v===0)state.player.mute();}catch(_){}};}
     document.getElementById('url').addEventListener('keydown',e=>{if(e.key==='Enter')addLink();});
-    document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>removeItem(b.dataset.del));document.querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>playQueueItem(b.dataset.play));
+    document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>removeItem(b.dataset.del));document.querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>playQueueItem(b.dataset.play));document.querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.up,-1));document.querySelectorAll('[data-down]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.down,1));
     const qr=document.getElementById('qr'); if(window.QRCode){new QRCode(qr,{text:roomUrl(state.room.code),width:150,height:150});} else qr.innerHTML='<div class="small qrtext">QR library unavailable.<br>Use the link below.</div>';
   }
   function showQrModal(){const back=document.createElement('div');back.className='modalback';back.innerHTML=`<div class="modal center"><div class="brand">ALAMKAROK</div><h2>Join Room</h2><div id="modalQr" class="qr"></div><div class="code">${esc(state.room.code)}</div><div class="linkbox">${esc(roomUrl(state.room.code))}</div><button class="btn primary wide" id="closeQr">Close</button></div>`;document.body.appendChild(back);if(window.QRCode)new QRCode(document.getElementById('modalQr'),{text:roomUrl(state.room.code),width:220,height:220});back.querySelector('#closeQr').onclick=()=>back.remove();}
   function personName(id){const p=state.people.find(x=>x.id===id);return p?p.name:'Unknown';}
 
   async function addLink(){if(state.busy)return;const input=document.getElementById('url');const id=ytId(input.value.trim());if(!id)return notify('Enter a valid YouTube link.','error');state.busy=true;try{let title='YouTube video';try{const r=await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${encodeURIComponent(id)}&format=json`);if(r.ok){const j=await r.json();if(j.title)title=j.title;}}catch(_){}const pos=state.queue.length?Math.max(...state.queue.map(x=>x.position))+1:0;const r=await getClient().from('queue_items').insert({room_id:state.room.id,video_id:id,title,thumbnail:ytThumb(id),added_by:state.me.id,position:pos}).select().single();if(r.error)throw r.error;input.value='';await refreshQueue();await broadcast('queue',{queue:state.queue});if(state.isHost&&!state.room.current_video_id)await performPlayback('load',id,0,true);notify('Added to the shared queue');}catch(e){notify(e.message||'Could not add video','error');}finally{state.busy=false;}}
-  async function removeItem(id){const r=await getClient().from('queue_items').delete().eq('id',id);if(r.error)return notify(r.error.message,'error');await normalizePositions();await refreshQueue();await broadcast('queue',{queue:state.queue});}
+  async function removeItem(id){
+    const item=state.queue.find(x=>x.id===id); if(!item)return;
+    const wasCurrent=item.video_id===state.room.current_video_id;
+    const r=await getClient().from('queue_items').delete().eq('id',id);
+    if(r.error)return notify(r.error.message,'error');
+    await refreshQueue(); await normalizePositions(); await refreshQueue();
+    if(wasCurrent){
+      const next=state.queue[0];
+      if(next) await performPlayback('load',next.video_id,0,true);
+      else {
+        const patch={current_video_id:null,current_index:0,is_playing:false,position_seconds:0,updated_at:new Date().toISOString()};
+        const rr=await getClient().from('rooms').update(patch).eq('id',state.room.id).select().single();
+        if(!rr.error)state.room=rr.data;
+        updateRoomView(); await broadcast('room',patch);
+        if(state.isHost&&state.player){try{state.player.stopVideo();}catch(_){} }
+      }
+    }
+    await broadcast('queue',{queue:state.queue});
+    notify('Video removed');
+  }
   async function normalizePositions(){for(let i=0;i<state.queue.length;i++){const r=await getClient().from('queue_items').update({position:i}).eq('id',state.queue[i].id);if(r.error)break;}}
+  async function moveQueueItem(id,direction){
+    if(state.busy)return;
+    const index=state.queue.findIndex(x=>x.id===id);
+    const targetIndex=index+direction;
+    if(index<0||targetIndex<0||targetIndex>=state.queue.length)return;
+    const item=state.queue[index], target=state.queue[targetIndex];
+    state.busy=true;
+    try{
+      const client=getClient();
+      const first=await client.from('queue_items').update({position:target.position}).eq('id',item.id);
+      if(first.error)throw first.error;
+      const second=await client.from('queue_items').update({position:item.position}).eq('id',target.id);
+      if(second.error)throw second.error;
+      await refreshQueue();
+      const currentIndex=state.room.current_video_id?state.queue.findIndex(x=>x.video_id===state.room.current_video_id):-1;
+      if(currentIndex>=0){
+        const rr=await client.from('rooms').update({current_index:currentIndex,updated_at:new Date().toISOString()}).eq('id',state.room.id).select().single();
+        if(!rr.error)state.room=rr.data;
+      }
+      updateRoomView();
+      await broadcast('queue',{queue:state.queue});
+      if(currentIndex>=0)await broadcast('room',{current_index:currentIndex});
+    }catch(e){notify(e.message||'Could not move video.','error');}
+    finally{state.busy=false;}
+  }
+
   async function shuffleQueue(){if(state.queue.length<2)return notify('Add at least two videos to shuffle.');const current=state.room.current_video_id;const currentItem=state.queue.find(x=>x.video_id===current);let rest=state.queue.filter(x=>x.video_id!==current);for(let i=rest.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[rest[i],rest[j]]=[rest[j],rest[i]];}const ordered=currentItem?[currentItem,...rest]:rest;for(let i=0;i<ordered.length;i++){const r=await getClient().from('queue_items').update({position:i}).eq('id',ordered[i].id);if(r.error)return notify(r.error.message,'error');}await refreshQueue();await broadcast('queue',{queue:state.queue});notify('Queue shuffled for everyone');}
   async function playQueueItem(id){const item=state.queue.find(x=>x.id===id);if(!item)return;await performPlayback('load',item.video_id,0,true);}
+  async function advanceAfterEnd(){
+    if(!state.isHost)return;
+    const idx=Number.isInteger(state.room.current_index)?state.room.current_index:state.queue.findIndex(x=>x.video_id===state.room.current_video_id);
+    const next=state.queue[idx+1];
+    if(next){ await performPlayback('load',next.video_id,0,true); notify('Autoplay: next video'); }
+    else {
+      const patch={is_playing:false,position_seconds:0,updated_at:new Date().toISOString()};
+      const r=await getClient().from('rooms').update(patch).eq('id',state.room.id).select().single();
+      if(!r.error)state.room=r.data;
+      updateRoomView();
+      await broadcast('room',patch);
+      notify('Queue finished');
+    }
+  }
   async function sendCommand(action){await broadcast('command',{from:state.me.id,action});if(state.isHost)await handleCommandBroadcast({from:state.me.id,action});}
   async function handleCommandBroadcast(payload){
     if(!payload||payload.from===state.me.id && !state.isHost)return;
@@ -224,12 +283,13 @@
         events:{
           onReady:()=>{
             state.playerReady=true;
+            try{state.player.setVolume(Number(document.getElementById('volume')?.value||80));}catch(_){}
             const p=Number(state.room.position_seconds||0);
             if(state.room.is_playing)state.player.loadVideoById({videoId:state.room.current_video_id,startSeconds:p});
             else state.player.cueVideoById({videoId:state.room.current_video_id,startSeconds:p});
           },
           onStateChange:async e=>{
-            if(e.data===YT.PlayerState.ENDED){await sendCommand('next');}
+            if(e.data===YT.PlayerState.ENDED){await advanceAfterEnd();}
             else if(e.data===YT.PlayerState.PLAYING){
               state.room.is_playing=true;state.room.position_seconds=currentTime();await broadcast('room',{is_playing:true,position_seconds:state.room.position_seconds});
             }else if(e.data===YT.PlayerState.PAUSED){

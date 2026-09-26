@@ -34,3 +34,5 @@ Then open `http://localhost:8080`.
 
 ## YouTube
 The host uses the official YouTube IFrame Player API. Other phones do not load the video player; they send playback commands through the room.
+
+Updated: shared move up/down, remove video, host-only volume, autoplay-next handling, and preserved Supabase config.
