@@ -168,7 +168,7 @@
 
       <section class="main-section shared-section card gap">
         <div class="section-title section-toggle"><button class="btn collapse-btn" id="toggleShared" data-collapse="shared" aria-expanded="${state.sharedCollapsed?'false':'true'}" aria-label="Collapse shared queue"><span class="chevron" aria-hidden="true">${state.sharedCollapsed?'▼':'▲'}</span></button><div class="section-static-label">SHARED QUEUE <span class="section-count">(<span id="queueCount">${q.length}</span>)</span></div><button class="btn green section-action-btn" id="shuffle">🔀 Shuffle</button></div>
-                <div id="sharedBody" class="collapsible-body ${state.sharedCollapsed?'collapsed':''}" aria-hidden="${state.sharedCollapsed?'true':'false'}"><div class="row"><input class="input" id="url" placeholder="Paste a YouTube link" inputmode="url"><button class="btn primary" id="add">Add to Queue</button></div><div class="queue" id="queueList">${q.length?q.map((x,i)=>`<div class="qitem ${x.video_id===current?'now':''}" draggable="true" data-drag-type="shared" data-drag-id="${esc(x.id)}"><div class="qnum drag-handle" title="Drag to reorder">⠿<span>${i+1}</span></div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.video_id===current?'NOW PLAYING · ':''}${esc(personName(x.added_by))}</div></div><div class="actions queue-actions"><button class="action-sm move-btn" data-up="${esc(x.id)}" title="Move up" ${i===0?'disabled':''}>↑</button><button class="action-sm move-btn" data-down="${esc(x.id)}" title="Move down" ${i===q.length-1?'disabled':''}>↓</button>${x.video_id!==current||state.isHost?`<button class="action-sm" data-play="${esc(x.id)}">Play</button>`:''}<button class="action-sm danger-sm" data-del="${esc(x.id)}">×</button></div></div>`).join(''):'<div class="empty">No videos yet. Add the first YouTube link.</div>'}</div></div>
+                <div id="sharedBody" class="collapsible-body ${state.sharedCollapsed?'collapsed':''}" aria-hidden="${state.sharedCollapsed?'true':'false'}"><div class="row"><input class="input" id="url" placeholder="Paste a YouTube link" inputmode="url"><button class="btn primary" id="add">Add to Queue</button></div><div class="queue" id="queueList">${q.length?q.map((x,i)=>`<div class="qitem ${x.video_id===current?'now':''}" draggable="false" data-drag-type="shared" data-drag-id="${esc(x.id)}"><div class="qnum drag-handle" title="Drag to reorder">⠿<span>${i+1}</span></div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.video_id===current?'NOW PLAYING · ':''}${esc(personName(x.added_by))}</div></div><div class="actions queue-actions"><button class="action-sm move-btn" data-up="${esc(x.id)}" title="Move up" ${i===0?'disabled':''}>↑</button><button class="action-sm move-btn" data-down="${esc(x.id)}" title="Move down" ${i===q.length-1?'disabled':''}>↓</button>${x.video_id!==current||state.isHost?`<button class="action-sm" data-play="${esc(x.id)}">Play</button>`:''}<button class="action-sm danger-sm" data-del="${esc(x.id)}">×</button></div></div>`).join(''):'<div class="empty">No videos yet. Add the first YouTube link.</div>'}</div></div>
       </section>
 
       <section class="main-section private-section card gap private-card">
@@ -191,7 +191,7 @@
     const stateEl=document.getElementById('playState');if(stateEl)stateEl.textContent=`${state.room.is_playing?'Playing':'Paused'} · ${current?'Video selected':'No video selected'}`;
     const play=document.getElementById('play');if(play)play.textContent=state.room.is_playing?'❚❚':'▶';
     const list=document.getElementById('queueList');
-    if(list)list.innerHTML=q.length?q.map((x,i)=>`<div class="qitem ${x.video_id===current?'now':''}" draggable="true" data-drag-type="shared" data-drag-id="${esc(x.id)}"><div class="qnum drag-handle" title="Drag to reorder">⠿<span>${i+1}</span></div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.video_id===current?'NOW PLAYING · ':''}${esc(personName(x.added_by))}</div></div><div class="actions queue-actions"><button class="action-sm move-btn" data-up="${esc(x.id)}" title="Move up" ${i===0?'disabled':''}>↑</button><button class="action-sm move-btn" data-down="${esc(x.id)}" title="Move down" ${i===q.length-1?'disabled':''}>↓</button>${x.video_id!==current||state.isHost?`<button class="action-sm" data-play="${esc(x.id)}">Play</button>`:''}<button class="action-sm danger-sm" data-del="${esc(x.id)}">×</button></div></div>`).join(''):'<div class="empty">No videos yet. Add the first YouTube link.</div>';
+    if(list)list.innerHTML=q.length?q.map((x,i)=>`<div class="qitem ${x.video_id===current?'now':''}" draggable="false" data-drag-type="shared" data-drag-id="${esc(x.id)}"><div class="qnum drag-handle" title="Drag to reorder">⠿<span>${i+1}</span></div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.video_id===current?'NOW PLAYING · ':''}${esc(personName(x.added_by))}</div></div><div class="actions queue-actions"><button class="action-sm move-btn" data-up="${esc(x.id)}" title="Move up" ${i===0?'disabled':''}>↑</button><button class="action-sm move-btn" data-down="${esc(x.id)}" title="Move down" ${i===q.length-1?'disabled':''}>↓</button>${x.video_id!==current||state.isHost?`<button class="action-sm" data-play="${esc(x.id)}">Play</button>`:''}<button class="action-sm danger-sm" data-del="${esc(x.id)}">×</button></div></div>`).join(''):'<div class="empty">No videos yet. Add the first YouTube link.</div>';
     if(list){list.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>removeItem(b.dataset.del));list.querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>playQueueItem(b.dataset.play));list.querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.up,-1));list.querySelectorAll('[data-down]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.down,1));bindDragAndDrop(document);}
     updateEndPreview();
     renderPrivateList();
@@ -235,144 +235,157 @@
     const privateList=root.querySelector?.('#privateList');
     if(privateList){
       privateList.querySelectorAll('.playlist-subbody').forEach(el=>bindSortableContainer(el,'private'));
-      bindSortableContainer(privateList,'private');
+      bindSortableContainer(privateList,'private',true);
     }
   }
 
-  function bindSortableContainer(container,type){
+  function bindSortableContainer(container,type,includeNested=false){
     if(!container)return;
-    [...container.children]
-      .filter(el=>el.matches?.(`[data-drag-type="${type}"]`))
-      .forEach(item=>enableNativeAndTouchDrag(item,container,type));
+    const items=()=>includeNested
+      ? [...container.children].filter(x=>x.matches?.('[data-drag-type="private"]'))
+      : [...container.children].filter(x=>x.matches?.(`[data-drag-type="${type}"]`));
+    items().forEach(item=>enablePointerDrag(item,container,type));
   }
 
-  function sortableItems(container,type){
-    return [...container.children].filter(el=>el.matches?.(`[data-drag-type="${type}"]`));
-  }
+  // One pointer-based sorter for mouse + touch. No native HTML5 drag is used.
+  // Touch starts directly from the visible drag handle; mouse can start anywhere on the row.
+  function enablePointerDrag(item,container,type){
+    if(item.dataset.pointerDragBound==='1')return;
+    item.dataset.pointerDragBound='1';
 
-  function clearDragPreview(container){
-    if(!container)return;
-    sortableItems(container,'shared').concat(sortableItems(container,'private')).forEach(el=>{
-      el.style.transition='';
-      el.style.transform='';
-      el.classList.remove('drag-over');
-    });
-  }
-
-  function previewSortable(container,item,target,type){
-    if(!item||!target||item===target)return;
-    const items=sortableItems(container,type);
-    const from=items.indexOf(item),to=items.indexOf(target);
-    if(from<0||to<0||from===to)return;
-    const gap=parseFloat(getComputedStyle(container).rowGap||getComputedStyle(container).gap||'8')||8;
-    const shift=item.getBoundingClientRect().height+gap;
-    items.forEach(el=>{
-      el.style.transition='transform 180ms cubic-bezier(.2,.8,.2,1)';
-      el.style.transform='';
-      el.classList.remove('drag-over');
-    });
-    target.classList.add('drag-over');
-    if(from<to){
-      for(let i=from+1;i<=to;i++)items[i].style.transform=`translate3d(0,${-shift}px,0)`;
-    }else{
-      for(let i=to;i<from;i++)items[i].style.transform=`translate3d(0,${shift}px,0)`;
-    }
-  }
-
-  function nearestSortable(container,type,clientY,exclude){
-    let best=null,bestDist=Infinity;
-    sortableItems(container,type).forEach(el=>{
-      if(el===exclude)return;
-      const r=el.getBoundingClientRect();
-      const d=Math.abs(clientY-(r.top+r.height/2));
-      if(d<bestDist){bestDist=d;best=el;}
-    });
-    return best;
-  }
-
-  function enableNativeAndTouchDrag(item,container,type){
-    if(item.dataset.dragBound==='1')return;
-    item.dataset.dragBound='1';
-    item.draggable=true;
-
-    // Desktop/mouse: native HTML5 drag/drop.
-    item.addEventListener('dragstart',e=>{
-      if(e.target.closest('button,input,select,textarea,a')){e.preventDefault();return;}
-      state.drag={type,id:item.dataset.dragId};
-      item.classList.add('dragging');
-      try{e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',item.dataset.dragId);}catch(_){}
-    });
-    item.addEventListener('dragover',e=>{
-      if(state.drag.type!==type||state.drag.id===item.dataset.dragId)return;
-      e.preventDefault();
-      try{e.dataTransfer.dropEffect='move';}catch(_){}
-      const dragged=sortableItems(container,type).find(x=>x.dataset.dragId===state.drag.id);
-      if(dragged)previewSortable(container,dragged,item,type);
-    });
-    item.addEventListener('drop',async e=>{
-      e.preventDefault();
-      const fromId=state.drag.id,toId=item.dataset.dragId;
-      clearDragPreview(container);
-      document.querySelectorAll('.dragging').forEach(x=>x.classList.remove('dragging'));
-      state.drag={type:null,id:null};
-      if(!fromId||fromId===toId)return;
-      if(type==='shared')await reorderQueueByDrop(fromId,toId);else reorderPrivateByDrop(fromId,toId);
-    });
-    item.addEventListener('dragend',()=>{
-      clearDragPreview(container);
-      item.classList.remove('dragging');
-      state.drag={type:null,id:null};
-    });
-
-    // Touch: only the drag handle starts the gesture, so normal scrolling remains intact.
     const handle=item.querySelector('.drag-handle');
-    if(!handle)return;
-    let pointerId=null,timer=null,active=false,startY=0,target=null;
-    const cleanup=()=>{
-      if(timer){clearTimeout(timer);timer=null;}
-      document.removeEventListener('pointermove',onPointerMove,true);
-      document.removeEventListener('pointerup',onPointerUp,true);
-      document.removeEventListener('pointercancel',onPointerCancel,true);
-      try{if(pointerId!==null)handle.releasePointerCapture(pointerId);}catch(_){}
-      clearDragPreview(container);
+    let pointerId=null, startY=0, active=false, currentTarget=null;
+    let startTop=0;
+
+    const items=()=>[...container.children].filter(el=>el.matches?.(`[data-drag-type="${type}"]`));
+
+    function resetVisuals(){
+      items().forEach(el=>{
+        el.style.transition='';
+        el.style.transform='';
+        el.classList.remove('drag-over');
+      });
       item.classList.remove('dragging');
+    }
+
+    function cleanup(){
+      document.removeEventListener('pointermove',onMove,true);
+      document.removeEventListener('pointerup',onUp,true);
+      document.removeEventListener('pointercancel',onCancel,true);
+      try{if(pointerId!==null)item.releasePointerCapture(pointerId);}catch(_){ }
+      resetVisuals();
       state.drag={type:null,id:null};
-      pointerId=null;active=false;target=null;
-    };
-    const activate=()=>{
+      pointerId=null;
+      active=false;
+      currentTarget=null;
+    }
+
+    function activate(e){
       if(active)return;
       active=true;
       state.drag={type,id:item.dataset.dragId};
+      const r=item.getBoundingClientRect();
+      startTop=r.top;
       item.classList.add('dragging');
-      try{handle.setPointerCapture(pointerId);}catch(_){}
-    };
-    const onPointerMove=e=>{
+      item.style.transition='none';
+      try{item.setPointerCapture(pointerId);}catch(_){ }
+      if(e.pointerType==='touch'||e.pointerType==='pen')e.preventDefault();
+    }
+
+    function findTarget(clientY){
+      const list=items().filter(el=>el!==item);
+      if(!list.length)return null;
+      let best=null,bestDistance=Infinity;
+      for(const el of list){
+        const r=el.getBoundingClientRect();
+        const center=r.top+r.height/2;
+        const d=Math.abs(clientY-center);
+        if(d<bestDistance){bestDistance=d;best=el;}
+      }
+      return best;
+    }
+
+    function preview(target){
+      const all=items();
+      all.forEach(el=>{
+        if(el!==item){
+          el.style.transition='transform 150ms cubic-bezier(.2,.8,.2,1)';
+          el.style.transform='';
+        }
+        el.classList.remove('drag-over');
+      });
+      if(!target)return;
+      target.classList.add('drag-over');
+      const from=all.indexOf(item),to=all.indexOf(target);
+      if(from<0||to<0||from===to)return;
+      const gap=parseFloat(getComputedStyle(container).rowGap||getComputedStyle(container).gap||'8')||8;
+      const shift=item.getBoundingClientRect().height+gap;
+      if(from<to){
+        for(let i=from+1;i<=to;i++)all[i].style.transform=`translate3d(0,${-shift}px,0)`;
+      }else{
+        for(let i=to;i<from;i++)all[i].style.transform=`translate3d(0,${shift}px,0)`;
+      }
+    }
+
+    function onMove(e){
       if(e.pointerId!==pointerId)return;
-      if(!active){if(Math.abs(e.clientY-startY)>10)cleanup();return;}
-      e.preventDefault();
-      target=nearestSortable(container,type,e.clientY,item);
-      if(target)previewSortable(container,item,target,type);
-    };
-    const onPointerUp=async e=>{
+      if(!active)activate(e);
+      if(e.pointerType==='touch'||e.pointerType==='pen')e.preventDefault();
+
+      // Keep the dragged row physically under the pointer/finger.
+      const dy=e.clientY-startY;
+      item.style.transform=`translate3d(0,${dy}px,0) scale(.992)`;
+
+      const target=findTarget(e.clientY);
+      if(target!==currentTarget){
+        currentTarget=target;
+        preview(target);
+      }
+    }
+
+    async function onUp(e){
       if(e.pointerId!==pointerId)return;
-      if(!active){cleanup();return;}
-      e.preventDefault();
-      const finalTarget=target||nearestSortable(container,type,e.clientY,item);
-      const fromId=item.dataset.dragId,toId=finalTarget?.dataset.dragId||null;
+      const target=currentTarget||findTarget(e.clientY);
+      const fromId=item.dataset.dragId;
+      const toId=target?.dataset.dragId||null;
+      const shouldMove=active&&toId&&toId!==fromId;
       cleanup();
-      if(!toId||toId===fromId)return;
-      if(type==='shared')await reorderQueueByDrop(fromId,toId);else reorderPrivateByDrop(fromId,toId);
-    };
-    const onPointerCancel=e=>{if(e.pointerId===pointerId)cleanup();};
-    handle.addEventListener('pointerdown',e=>{
-      if(e.pointerType==='mouse')return;
+      if(!shouldMove)return;
+      if(type==='shared')await reorderQueueByDrop(fromId,toId);
+      else reorderPrivateByDrop(fromId,toId);
+    }
+
+    function onCancel(e){if(e.pointerId===pointerId)cleanup();}
+
+    function onDown(e){
       if(e.button!==undefined&&e.button!==0)return;
-      pointerId=e.pointerId;startY=e.clientY;
-      timer=setTimeout(()=>{timer=null;activate();},180);
-      document.addEventListener('pointermove',onPointerMove,true);
-      document.addEventListener('pointerup',onPointerUp,true);
-      document.addEventListener('pointercancel',onPointerCancel,true);
-    },{passive:false});
+      if(e.target.closest('button,input,select,textarea,a'))return;
+
+      // On touch/pen, only the explicit drag handle starts sorting.
+      if((e.pointerType==='touch'||e.pointerType==='pen') && (!handle||!e.target.closest('.drag-handle')))return;
+
+      pointerId=e.pointerId;
+      startY=e.clientY;
+      active=false;
+      currentTarget=null;
+      const r=item.getBoundingClientRect();
+      startTop=r.top;
+
+      document.addEventListener('pointermove',onMove,true);
+      document.addEventListener('pointerup',onUp,true);
+      document.addEventListener('pointercancel',onCancel,true);
+
+      // Explicit drag handle means the user has asked to drag: don't let the browser scroll.
+      if(e.pointerType==='touch'||e.pointerType==='pen'){
+        e.preventDefault();
+        activate(e);
+      }else{
+        // Mouse drag begins immediately; no speed/6px threshold.
+        activate(e);
+      }
+    }
+
+    item.addEventListener('pointerdown',onDown,{passive:false});
   }
 
   function animateListReorder(list,beforeRects){
@@ -501,7 +514,7 @@
       if(!seen.has(key)){ const g={key,playlistId:x.playlist_id||null,title:x.playlist_title||'Individual Videos',items:[]}; seen.set(key,g);groups.push(g); }
       seen.get(key).items.push({x,i});
     });
-    const itemHtml=({x,i})=>`<div class="qitem private-item" draggable="true" data-drag-type="private" data-drag-id="${esc(x.id)}"><input class="private-check" type="checkbox" data-private-check="${esc(x.id)}" ${x.selected?'checked':''} aria-label="Select ${esc(x.title)}"><div class="qnum drag-handle" title="Drag to reorder">⠿<span>${i+1}</span></div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.playlist_id?'Playlist · ':''}Private · not uploaded</div></div><div class="actions queue-actions"><button class="action-sm move-btn" data-private-up="${esc(x.id)}" ${i===0?'disabled':''}>↑</button><button class="action-sm move-btn" data-private-down="${esc(x.id)}" ${i===state.privateList.length-1?'disabled':''}>↓</button><button class="action-sm danger-sm" data-private-del="${esc(x.id)}">×</button></div></div>`;
+    const itemHtml=({x,i})=>`<div class="qitem private-item" draggable="false" data-drag-type="private" data-drag-id="${esc(x.id)}"><input class="private-check" type="checkbox" data-private-check="${esc(x.id)}" ${x.selected?'checked':''} aria-label="Select ${esc(x.title)}"><div class="qnum drag-handle" title="Drag to reorder">⠿<span>${i+1}</span></div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.playlist_id?'Playlist · ':''}Private · not uploaded</div></div><div class="actions queue-actions"><button class="action-sm move-btn" data-private-up="${esc(x.id)}" ${i===0?'disabled':''}>↑</button><button class="action-sm move-btn" data-private-down="${esc(x.id)}" ${i===state.privateList.length-1?'disabled':''}>↓</button><button class="action-sm danger-sm" data-private-del="${esc(x.id)}">×</button></div></div>`;
     list.innerHTML=groups.map(g=>{
       if(!g.playlistId) return g.items.map(itemHtml).join('');
       const collapsed=!!state.playlistCollapsed[g.playlistId];

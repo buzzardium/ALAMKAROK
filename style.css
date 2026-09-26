@@ -1506,3 +1506,16 @@ body{
     touch-action: none !important;
   }
 }
+
+
+/* FINAL POINTER DRAG BEHAVIOR */
+.qitem[data-drag-type="shared"],
+.qitem.private-item{will-change:transform;backface-visibility:hidden;-webkit-backface-visibility:hidden;}
+.qitem[data-drag-type="shared"]{cursor:grab!important;}
+.qitem.private-item{cursor:grab!important;}
+.qitem.dragging{opacity:.78!important;z-index:50!important;position:relative!important;box-shadow:0 16px 36px rgba(0,0,0,.34)!important;}
+.drag-handle{touch-action:none!important;-webkit-user-select:none!important;user-select:none!important;-webkit-touch-callout:none!important;cursor:grab!important;}
+@media(max-width:780px){
+  .qitem[data-drag-type="shared"],.qitem.private-item{touch-action:pan-y!important;}
+  .drag-handle{touch-action:none!important;min-width:36px;min-height:40px;}
+}
