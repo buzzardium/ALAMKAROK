@@ -6,7 +6,7 @@
   const colors = ['#9b5cff','#28a8ff','#18c9a0','#ff9d2e','#ff4f5f','#f1d21b','#ef67c7','#7bd66f','#54d8e8','#ff6f9c'];
   const state = {
     room:null, me:null, people:[], queue:[], isHost:false, channel:null,
-    player:null, playerReady:false, ytReady:false, ytLoading:false, currentPosition:0, busy:false, privateList:[], privateBusy:false, privateCollapsed:false, sharedCollapsed:false, playlistCollapsed:{}
+    player:null, playerReady:false, ytReady:false, ytLoading:false, currentPosition:0, busy:false, privateList:[], privateBusy:false, privateCollapsed:false, sharedCollapsed:false, playlistCollapsed:{}, endPreviewItems:null
   };
 
   function esc(v){ return String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -183,7 +183,7 @@
     if(state.isHost&&current)ensureYouTubePlayer();
   }
   function bindRoomControls(){
-    document.getElementById('togglePrivate').onclick=()=>toggleListSection('private');document.getElementById('toggleShared').onclick=()=>toggleListSection('shared');document.getElementById('add').onclick=addLink;document.getElementById('shuffle').onclick=shuffleQueue;const privateAddBtn=document.getElementById('privateAdd'); if(privateAddBtn) privateAddBtn.onclick=(e)=>{e.preventDefault();addPrivateInput();};document.getElementById('privateSelectAll').onclick=selectAllPrivate;document.getElementById('uploadSelected').onclick=()=>uploadPrivate(false);document.getElementById('uploadAll').onclick=()=>uploadPrivate(true);document.getElementById('prev').onclick=()=>sendCommand('previous');document.getElementById('next').onclick=()=>sendCommand('next');document.getElementById('play').onclick=()=>sendCommand(state.room.is_playing?'pause':'play');document.getElementById('showQr').onclick=showQrModal;const fs=document.getElementById('fullscreenBtn');if(fs)fs.onclick=togglePlayerFullscreen;const previewTab=document.getElementById('endPreviewTab');if(previewTab)previewTab.onclick=()=>setEndPreviewOpen(!document.getElementById('endPreview')?.classList.contains('show'));const vol=document.getElementById('volume');if(vol){vol.oninput=()=>{const v=Number(vol.value);const label=document.getElementById('volumeValue');if(label)label.textContent=v+'%';if(state.playerReady&&state.player)try{state.player.setVolume(v);state.player.unMute();if(v===0)state.player.mute();}catch(_){}};}
+    document.getElementById('togglePrivate').onclick=()=>toggleListSection('private');document.getElementById('toggleShared').onclick=()=>toggleListSection('shared');document.getElementById('add').onclick=addLink;document.getElementById('shuffle').onclick=shuffleQueue;const privateAddBtn=document.getElementById('privateAdd'); if(privateAddBtn) privateAddBtn.onclick=(e)=>{e.preventDefault();addPrivateInput();};document.getElementById('privateSelectAll').onclick=selectAllPrivate;document.getElementById('uploadSelected').onclick=()=>uploadPrivate(false);document.getElementById('uploadAll').onclick=()=>uploadPrivate(true);document.getElementById('prev').onclick=()=>sendCommand('previous');document.getElementById('next').onclick=()=>sendCommand('next');document.getElementById('play').onclick=()=>sendCommand(state.room.is_playing?'pause':'play');document.getElementById('showQr').onclick=showQrModal;const fs=document.getElementById('fullscreenBtn');if(fs)fs.onclick=togglePlayerFullscreen;const previewTab=document.getElementById('endPreviewTab');if(previewTab)previewTab.onclick=()=>{const open=document.getElementById('endPreview')?.classList.contains('show');if(open)hideEndPreview();else{state.endPreviewItems=null;updateEndPreview();setEndPreviewOpen(true,false);}};const vol=document.getElementById('volume');if(vol){vol.oninput=()=>{const v=Number(vol.value);const label=document.getElementById('volumeValue');if(label)label.textContent=v+'%';if(state.playerReady&&state.player)try{state.player.setVolume(v);state.player.unMute();if(v===0)state.player.mute();}catch(_){}};}
     document.getElementById('url').addEventListener('keydown',e=>{if(e.key==='Enter')addLink();});
     document.getElementById('privateUrl').addEventListener('keydown',e=>{if(e.key==='Enter')addPrivateInput();});
     document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>removeItem(b.dataset.del));document.querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>playQueueItem(b.dataset.play));document.querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.up,-1));document.querySelectorAll('[data-down]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.down,1));
@@ -325,7 +325,7 @@
     if(!state.isHost)return;
     const idx=Number.isInteger(state.room.current_index)?state.room.current_index:state.queue.findIndex(x=>x.video_id===state.room.current_video_id);
     const next=state.queue[idx+1];
-    if(next){ await performPlayback('load',next.video_id,0,true); notify('Autoplay: next video'); }
+    if(next){ await performPlayback('load',next.video_id,0,true,true); notify('Autoplay: next video'); }
     else {
       const patch={is_playing:false,position_seconds:0,updated_at:new Date().toISOString()};
       const r=await getClient().from('rooms').update(patch).eq('id',state.room.id).select().single();
@@ -347,18 +347,21 @@
     if((payload.action==='next'||payload.action==='previous')&&state.queue[idx])await performPlayback('load',state.queue[idx].video_id,0,true);
   }
   function currentTime(){try{return state.playerReady?state.player.getCurrentTime():Number(state.room.position_seconds||0);}catch(_){return Number(state.room.position_seconds||0);}}
-  async function performPlayback(action,videoId,position=0,playing=false){
-    if(action==='load'){const idx=state.queue.findIndex(x=>x.video_id===videoId);const patch={current_video_id:videoId,current_index:idx<0?0:idx,is_playing:playing,position_seconds:position};const r=await getClient().from('rooms').update({...patch,updated_at:new Date().toISOString()}).eq('id',state.room.id).select().single();if(!r.error)state.room=r.data;updateRoomView();if(state.isHost)loadVideo(videoId,position,playing);await broadcast('room',patch);return;}
+  async function performPlayback(action,videoId,position=0,playing=false,preservePreview=false){
+    if(action==='load'){const idx=state.queue.findIndex(x=>x.video_id===videoId);const patch={current_video_id:videoId,current_index:idx<0?0:idx,is_playing:playing,position_seconds:position};const r=await getClient().from('rooms').update({...patch,updated_at:new Date().toISOString()}).eq('id',state.room.id).select().single();if(!r.error)state.room=r.data;updateRoomView();if(state.isHost)loadVideo(videoId,position,playing,preservePreview);await broadcast('room',patch);return;}
     const playingNow=action==='play';const pos=position;const patch={is_playing:playingNow,position_seconds:pos,updated_at:new Date().toISOString()};const r=await getClient().from('rooms').update(patch).eq('id',state.room.id).select().single();if(!r.error)state.room=r.data;updateRoomView();if(state.isHost)applyLocalPlay(playingNow);await broadcast('room',patch);
   }
 
   let endPreviewTimer=null;
+  function getEndPreviewItems(){
+    const idx=state.room?.current_video_id?state.queue.findIndex(x=>x.video_id===state.room.current_video_id):-1;
+    return idx>=0?state.queue.slice(idx+1):state.queue.slice(0);
+  }
   function updateEndPreview(){
     const list=document.getElementById('endPreviewList');
     const count=document.getElementById('endPreviewCount');
     if(!list||!count)return;
-    const idx=state.room?.current_video_id?state.queue.findIndex(x=>x.video_id===state.room.current_video_id):-1;
-    const remaining=idx>=0?state.queue.slice(idx+1):state.queue.slice(0);
+    const remaining=Array.isArray(state.endPreviewItems)?state.endPreviewItems:getEndPreviewItems();
     list.innerHTML=remaining.slice(0,8).map((x,i)=>`<div class="end-preview-item"><span>${i+1}</span><span>${esc(x.title||'YouTube video')}</span></div>`).join('');
     count.textContent=remaining.length===0?'Nothing remaining':`${remaining.length} remaining`;
   }
@@ -372,8 +375,15 @@
     clearTimeout(endPreviewTimer);
     if(open&&autoClose)endPreviewTimer=setTimeout(()=>setEndPreviewOpen(false),25000);
   }
-  function showEndPreview(){updateEndPreview();setEndPreviewOpen(true,true);}
-  function hideEndPreview(){setEndPreviewOpen(false);}
+  function showEndPreview(){
+    state.endPreviewItems=getEndPreviewItems().slice();
+    updateEndPreview();
+    setEndPreviewOpen(true,true);
+  }
+  function hideEndPreview(){
+    state.endPreviewItems=null;
+    setEndPreviewOpen(false);
+  }
   async function togglePlayerFullscreen(){
     const shell=document.getElementById('playerShell');
     if(!shell)return;
@@ -454,10 +464,10 @@
     }catch(e){state.player=null;state.playerReady=false;notify(`Could not create YouTube player: ${e.message||e}`,'error');}
   }
 
-  function loadVideo(id,pos,play){
+  function loadVideo(id,pos,play,preservePreview=false){
     if(!state.isHost)return;
-    hideEndPreview();
-    if(!state.playerReady||!state.player){ensureYouTubePlayer();setTimeout(()=>{if(state.playerReady&&state.player)loadVideo(id,pos,play);},500);return;}
+    if(!preservePreview)hideEndPreview();
+    if(!state.playerReady||!state.player){ensureYouTubePlayer();setTimeout(()=>{if(state.playerReady&&state.player)loadVideo(id,pos,play,preservePreview);},500);return;}
     try{
       state.player.loadVideoById({videoId:id,startSeconds:Number(pos||0)});
       if(!play)state.player.pauseVideo();

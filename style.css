@@ -1077,3 +1077,80 @@ body{
 .player-shell:fullscreen .end-preview.show .end-preview-panel{max-height:32vh}
 .player-shell:fullscreen .end-preview-tab{height:34px}
 @media(max-width:780px){.end-preview-tab{width:104px;height:28px;font-size:10px}.end-preview.show .end-preview-panel{max-height:300px;padding:10px 12px}.end-preview-item{font-size:11px}}
+
+
+/* FINAL NEXT-UP SAFETY OVERRIDE
+   The preview is a normal layout sibling below the YouTube player area.
+   It must never be positioned over the iframe. */
+.player-shell{
+  display:flex !important;
+  flex-direction:column !important;
+  align-items:stretch !important;
+  justify-content:flex-start !important;
+  overflow:visible !important;
+}
+.player-shell > .playerbox{
+  position:relative !important;
+  flex:0 0 auto !important;
+  width:100% !important;
+  height:auto !important;
+  aspect-ratio:16 / 9 !important;
+  overflow:hidden !important;
+}
+.player-shell > .end-preview{
+  position:relative !important;
+  inset:auto !important;
+  top:auto !important;
+  right:auto !important;
+  bottom:auto !important;
+  left:auto !important;
+  width:100% !important;
+  height:auto !important;
+  max-height:none !important;
+  margin:0 !important;
+  padding:0 !important;
+  background:transparent !important;
+  border:0 !important;
+  border-radius:0 !important;
+  opacity:1 !important;
+  transform:none !important;
+  z-index:2 !important;
+  pointer-events:auto !important;
+  overflow:visible !important;
+}
+.player-shell > .end-preview .end-preview-tab{
+  position:relative !important;
+  z-index:3 !important;
+  display:flex !important;
+  margin:-1px auto 0 !important;
+}
+.player-shell > .end-preview .end-preview-panel{
+  position:relative !important;
+  z-index:2 !important;
+  width:100% !important;
+}
+.player-shell:fullscreen{
+  display:flex !important;
+  flex-direction:column !important;
+  width:100vw !important;
+  height:100vh !important;
+  overflow:hidden !important;
+}
+.player-shell:fullscreen > .playerbox{
+  flex:1 1 auto !important;
+  width:100% !important;
+  height:auto !important;
+  min-height:0 !important;
+  aspect-ratio:auto !important;
+}
+.player-shell:fullscreen > .end-preview{
+  flex:0 0 auto !important;
+  width:100% !important;
+  background:#000 !important;
+}
+@media(max-width:780px){
+  .player-shell > .end-preview .end-preview-tab{
+    width:104px !important;
+    height:30px !important;
+  }
+}
