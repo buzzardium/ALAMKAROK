@@ -325,7 +325,7 @@
     if(!state.isHost)return;
     const idx=Number.isInteger(state.room.current_index)?state.room.current_index:state.queue.findIndex(x=>x.video_id===state.room.current_video_id);
     const next=state.queue[idx+1];
-    if(next){ await performPlayback('load',next.video_id,0,true); notify('Autoplay: next video'); }
+    if(next){ await performPlayback('load',next.video_id,0,true); notify('Autoplay: next video'); return true; }
     else {
       const patch={is_playing:false,position_seconds:0,updated_at:new Date().toISOString()};
       const r=await getClient().from('rooms').update(patch).eq('id',state.room.id).select().single();
@@ -333,6 +333,7 @@
       updateRoomView();
       await broadcast('room',patch);
       notify('Queue finished');
+      return false;
     }
   }
   async function sendCommand(action){await broadcast('command',{from:state.me.id,action});if(state.isHost)await handleCommandBroadcast({from:state.me.id,action});}
@@ -443,7 +444,10 @@
             else state.player.cueVideoById({videoId:state.room.current_video_id,startSeconds:p});
           },
           onStateChange:async e=>{
-            if(e.data===YT.PlayerState.ENDED){showEndPreview();await advanceAfterEnd();}
+            if(e.data===YT.PlayerState.ENDED){
+              const advanced=await advanceAfterEnd();
+              if(advanced)showEndPreview();
+            }
             else if(e.data===YT.PlayerState.PLAYING){
               state.room.is_playing=true;state.room.position_seconds=currentTime();await broadcast('room',{is_playing:true,position_seconds:state.room.position_seconds});
             }else if(e.data===YT.PlayerState.PAUSED){
