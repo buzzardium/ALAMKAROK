@@ -198,10 +198,57 @@
     updatePeopleUI();
     if(state.isHost&&current)ensureYouTubePlayer();
   }
+  function captureDragRects(list){
+    const m=new Map();
+    if(!list)return m;
+    list.querySelectorAll('[data-drag-type]').forEach(el=>m.set(el.dataset.dragId,el.getBoundingClientRect()));
+    return m;
+  }
+  function clearDragPreview(list){
+    if(!list)return;
+    list.querySelectorAll('[data-drag-type]').forEach(el=>{
+      el.style.transition='';
+      el.style.transform='';
+      el.classList.remove('drag-shift');
+    });
+  }
+  function applyDragPreview(list,fromId,toId,type){
+    if(!list||!fromId||!toId||fromId===toId)return;
+    const items=[...list.querySelectorAll(`[data-drag-type="${type}"]`)];
+    const from=items.findIndex(x=>x.dataset.dragId===fromId), to=items.findIndex(x=>x.dataset.dragId===toId);
+    if(from<0||to<0||from===to)return;
+    const dragged=items[from];
+    const shift=dragged.getBoundingClientRect().height + 9;
+    clearDragPreview(list);
+    if(from<to){
+      for(let i=from+1;i<=to;i++) items[i].style.transform=`translateY(${-shift}px)`;
+    }else{
+      for(let i=to;i<from;i++) items[i].style.transform=`translateY(${shift}px)`;
+    }
+  }
+  function animateListReorder(list,beforeRects){
+    if(!list||!beforeRects||!beforeRects.size)return;
+    const els=[...list.querySelectorAll('[data-drag-type]')];
+    els.forEach(el=>{
+      const old=beforeRects.get(el.dataset.dragId); if(!old)return;
+      const now=el.getBoundingClientRect();
+      const dx=old.left-now.left, dy=old.top-now.top;
+      if(Math.abs(dx)<1&&Math.abs(dy)<1)return;
+      el.style.transition='none';
+      el.style.transform=`translate(${dx}px,${dy}px)`;
+      el.getBoundingClientRect();
+      requestAnimationFrame(()=>{
+        el.style.transition='transform 280ms cubic-bezier(.22,.8,.25,1)';
+        el.style.transform='translate(0,0)';
+      });
+      const done=()=>{el.style.transition='';el.style.transform='';el.removeEventListener('transitionend',done);};
+      el.addEventListener('transitionend',done);
+    });
+  }
   function bindDragAndDrop(root=document){
     const lists=[
-      {el:root.querySelector?.('#queueList'), type:'shared'},
-      {el:root.querySelector?.('#privateList'), type:'private'}
+      {el:root.querySelector?.('#queueList'),type:'shared'},
+      {el:root.querySelector?.('#privateList'),type:'private'}
     ];
     lists.forEach(({el,type})=>{
       if(!el)return;
@@ -217,7 +264,7 @@
     const clearOver=()=>list.querySelectorAll('.drag-over').forEach(x=>x.classList.remove('drag-over'));
     const cleanup=()=>{
       if(pointerId!==null){try{item.releasePointerCapture(pointerId);}catch(_){} }
-      pointerId=null;active=false;item.classList.remove('dragging');clearOver();
+      pointerId=null;active=false;item.classList.remove('dragging');clearOver();clearDragPreview(list);
       state.drag={type:null,id:null};
       document.removeEventListener('pointermove',onMove,true);
       document.removeEventListener('pointerup',onUp,true);
@@ -240,6 +287,7 @@
       clearOver();
       if(target&&target!==item&&list.contains(target)&&target.dataset.dragType===type){
         target.classList.add('drag-over');
+        applyDragPreview(list,item.dataset.dragId,target.dataset.dragId,type);
       }
     };
     const onUp=async(e)=>{
@@ -266,11 +314,16 @@
   function reorderPrivateByDrop(fromId,toId){
     const from=state.privateList.findIndex(x=>x.id===fromId), to=state.privateList.findIndex(x=>x.id===toId);
     if(from<0||to<0||from===to)return;
-    const [item]=state.privateList.splice(from,1); state.privateList.splice(to,0,item); savePrivateList(); renderPrivateList();
+    const list=document.getElementById('privateList');
+    const before=captureDragRects(list);
+    const [item]=state.privateList.splice(from,1); state.privateList.splice(to,0,item);
+    savePrivateList(); renderPrivateList();
+    animateListReorder(document.getElementById('privateList'),before);
   }
   async function reorderSharedQueue(fromId,toId){
     if(state.busy)return false;
     if(!fromId||!toId||fromId===toId)return false;
+    const beforeRects=captureDragRects(document.getElementById('queueList'));
     state.busy=true;
     try{
       const r=await getClient().rpc('reorder_queue_item',{
@@ -290,6 +343,7 @@
       const rr=await getClient().from('rooms').update(patch).eq('id',state.room.id).select().single();
       if(!rr.error)state.room=rr.data;
       updateRoomView();
+      animateListReorder(document.getElementById('queueList'),beforeRects);
       await broadcast('queue',{queue:state.queue,queue_version:state.queueVersion});
       if(currentIndex>=0)await broadcast('room',{current_index:currentIndex,queue_version:state.queueVersion});
       return true;
@@ -461,33 +515,6 @@
     notify('Video removed');
   }
   async function normalizePositions(){for(let i=0;i<state.queue.length;i++){const r=await getClient().from('queue_items').update({position:i}).eq('id',state.queue[i].id);if(r.error)break;}}
-  async function moveQueueItem(id,direction){
-    if(state.busy)return;
-    const index=state.queue.findIndex(x=>x.id===id);
-    const targetIndex=index+direction;
-    if(index<0||targetIndex<0||targetIndex>=state.queue.length)return;
-    const item=state.queue[index], target=state.queue[targetIndex];
-    state.busy=true;
-    try{
-      const client=getClient();
-      const first=await client.from('queue_items').update({position:target.position}).eq('id',item.id);
-      if(first.error)throw first.error;
-      const second=await client.from('queue_items').update({position:item.position}).eq('id',target.id);
-      if(second.error)throw second.error;
-      await refreshQueue();
-      const currentIndex=state.room.current_video_id?state.queue.findIndex(x=>x.video_id===state.room.current_video_id):-1;
-      if(currentIndex>=0){
-        const rr=await client.from('rooms').update({current_index:currentIndex,updated_at:new Date().toISOString()}).eq('id',state.room.id).select().single();
-        if(!rr.error)state.room=rr.data;
-      }
-      updateRoomView();
-      await broadcast('queue',{queue:state.queue});
-      if(currentIndex>=0)await broadcast('room',{current_index:currentIndex});
-    }catch(e){notify(e.message||'Could not move video.','error');}
-    finally{state.busy=false;}
-  }
-
-  async function shuffleQueue(){if(state.queue.length<2)return notify('Add at least two videos to shuffle.');const current=state.room.current_video_id;const currentItem=state.queue.find(x=>x.video_id===current);let rest=state.queue.filter(x=>x.video_id!==current);for(let i=rest.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[rest[i],rest[j]]=[rest[j],rest[i]];}const ordered=currentItem?[currentItem,...rest]:rest;for(let i=0;i<ordered.length;i++){const r=await getClient().from('queue_items').update({position:i}).eq('id',ordered[i].id);if(r.error)return notify(r.error.message,'error');}await refreshQueue();await broadcast('queue',{queue:state.queue});notify('Queue shuffled for everyone');}
   async function playQueueItem(id){const item=state.queue.find(x=>x.id===id);if(!item)return;await performPlayback('load',item.video_id,0,true);}
   async function advanceAfterEnd(){
     if(!state.isHost)return;

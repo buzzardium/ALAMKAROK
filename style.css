@@ -1367,3 +1367,24 @@ body{
 .qitem.dragging{opacity:.42!important;transform:scale(.992)!important}
 .qitem.drag-over{border-color:var(--accent)!important;background:#13233b!important;box-shadow:0 0 0 1px rgba(77,141,255,.22),0 8px 24px rgba(0,0,0,.18)!important}
 .qitem button,.qitem input{user-select:auto;-webkit-user-select:auto}
+
+/* Smooth live reorder + FLIP settle animation */
+.qitem[data-drag-type="shared"],
+.qitem.private-item{will-change:transform;}
+.qitem.dragging{z-index:3;position:relative;box-shadow:0 12px 30px rgba(0,0,0,.28);}
+
+/* PRIVATE SECTION — alternate collapse button accent */
+#togglePrivate.collapse-btn{
+  background:#211b3d!important;
+  border-color:#5d4a92!important;
+  color:#c9b9ff!important;
+  box-shadow:0 0 0 1px rgba(141,92,255,.10), inset 0 0 18px rgba(141,92,255,.05);
+}
+#togglePrivate.collapse-btn:hover{
+  background:#2a214d!important;
+  border-color:#8067d9!important;
+  color:#e3d9ff!important;
+  box-shadow:0 0 0 1px rgba(141,92,255,.18),0 8px 22px rgba(65,40,130,.18);
+}
+#togglePrivate.collapse-btn:active{transform:translateY(1px) scale(.98);}
+#togglePrivate.collapse-btn .chevron{color:inherit!important;background:transparent!important;border-color:transparent!important;}
