@@ -4,4 +4,25 @@
 .volume-control{display:flex;align-items:center;gap:10px;padding:0 18px 14px}.volume-control .range{flex:1;accent-color:var(--accent)}.volume-control span{font-size:13px;color:var(--muted);min-width:32px}.volume-control span:first-child{font-size:16px;min-width:auto}.danger-sm{background:#3a1720;color:#ff9baa}.danger-sm:hover{background:#54202d}
 
 .private-card{border-color:#2b3c59}.private-help{margin:-3px 0 12px}.private-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}.private-item{grid-template-columns:28px 34px 56px 1fr auto}.private-check{width:18px;height:18px;accent-color:var(--accent)}@media(max-width:780px){.private-item{grid-template-columns:24px 28px 48px 1fr auto}.private-item .action-sm{padding:6px 7px}.private-actions .btn{flex:1}}
-.section-toggle{margin-bottom:12px}.section-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:1;min-width:0;background:transparent;color:var(--text);padding:0;text-align:left}.section-heading h2{margin:0;font-size:17px}.chevron{width:30px;height:30px;display:grid;place-items:center;border:1px solid var(--border);border-radius:9px;background:#172237;color:#cbd5e5;font-size:13px;flex:none}.collapsible-body{display:grid;grid-template-rows:1fr;opacity:1;transition:grid-template-rows .22s ease,opacity .18s ease}.collapsible-body>*{min-height:0}.collapsible-body.collapsed{grid-template-rows:0fr;opacity:0;overflow:hidden}.collapsible-body.collapsed>*{overflow:hidden}.section-heading:active .chevron{transform:scale(.96)}
+.section-toggle{margin-bottom:12px}.section-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:1;min-width:0;background:transparent;color:var(--text);padding:0;text-align:left}.section-heading h2{margin:0;font-size:17px}.chevron{width:30px;height:30px;display:grid;place-items:center;border:1px solid var(--border);border-radius:9px;background:#172237;color:#cbd5e5;font-size:13px;flex:none}.collapsible-body{max-height:1400px;opacity:1;overflow:hidden;transition:max-height .28s ease,opacity .18s ease}.collapsible-body.collapsed{max-height:0;opacity:0;overflow:hidden}.collapsible-body>*{min-height:0}.section-heading:active .chevron{transform:scale(.96)}
+
+/* End-of-video preview and custom fullscreen */
+.player-shell{position:relative;overflow:hidden;background:#05070c}
+.player-shell .playerbox{position:relative;z-index:1}
+.end-preview{position:absolute;top:3.5%;right:3.5%;width:min(33%,360px);max-height:78%;padding:12px 14px;border-radius:12px;background:rgba(7,12,22,.72);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.10);z-index:4;color:#fff;opacity:0;transform:translateY(-6px);pointer-events:none;transition:opacity .45s ease,transform .45s ease}
+.end-preview.show{opacity:1;transform:translateY(0)}
+.end-preview-title{font-size:10px;letter-spacing:.16em;color:#aab7ca;margin-bottom:7px;font-weight:700}
+.end-preview-list{display:grid;gap:5px}
+.end-preview-item{display:grid;grid-template-columns:18px 1fr;gap:6px;align-items:center;font-size:12px;line-height:1.25;color:#edf2f8}
+.end-preview-item span:first-child{color:#8492a7;font-size:10px;text-align:right}
+.end-preview-item span:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.end-preview-count{margin-top:9px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08);font-size:11px;color:#aeb9c9;text-align:right}
+.fullscreen-btn{position:absolute;right:10px;bottom:10px;z-index:5;width:36px;height:36px;border-radius:9px;background:rgba(7,12,22,.72);color:#fff;border:1px solid rgba(255,255,255,.16);font-size:18px;line-height:1;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.fullscreen-btn:hover{background:rgba(20,30,48,.88)}
+.player-shell:fullscreen{width:100vw;height:100vh;border-radius:0;background:#000;display:flex;align-items:center;justify-content:center}
+.player-shell:fullscreen .playerbox{width:100%;height:100%;aspect-ratio:auto}
+.player-shell:fullscreen .end-preview{top:3vh;right:3vw;width:min(30vw,520px);max-height:76vh;padding:16px 18px}
+.player-shell:fullscreen .end-preview-item{font-size:14px;line-height:1.3}
+.player-shell:fullscreen .end-preview-count{font-size:12px}
+.player-shell:fullscreen .fullscreen-btn{right:18px;bottom:18px}
+@media(max-width:780px){.end-preview{top:3%;right:3%;width:min(52%,300px);padding:9px 10px}.end-preview-item{font-size:10px}.end-preview-count{font-size:10px;margin-top:6px;padding-top:6px}.fullscreen-btn{width:34px;height:34px;right:8px;bottom:8px}}

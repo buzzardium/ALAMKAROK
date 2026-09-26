@@ -143,7 +143,7 @@
   function renderRoom(){
     const current=state.room.current_video_id;const q=state.queue;
     app.innerHTML=`<div class="wrap room-screen"><div class="top"><div><div class="brand">ALAMKAROK</div><div class="small">Room <b>${esc(state.room.code)}</b> · <span id="peopleCount">${state.people.length}</span> people</div></div><div class="actions"><span class="badge"><span class="dot" style="background:${esc(state.me.color)}"></span>${esc(state.me.name)}</span><button class="btn" id="showQr">QR</button></div></div>
-      <div class="roomgrid"><section><div class="card"><div class="player"><div id="player" class="playerbox"><div class="playerplaceholder" id="playerPlaceholder">${state.isHost?(current?'Loading YouTube player…':'Add a YouTube video to start playback.'):'Host is playing the video on their phone'}</div></div></div><div class="controls"><button class="control" id="prev" title="Previous">⏮</button><button class="control main" id="play" title="Play/Pause">${state.room.is_playing?'❚❚':'▶'}</button><button class="control" id="next" title="Next">⏭</button></div>${state.isHost?`<div class="volume-control"><span>🔊</span><input id="volume" class="range" type="range" min="0" max="100" value="80" aria-label="Host volume"><span id="volumeValue">80%</span></div>`:''}<div class="small center" id="playState">${state.room.is_playing?'Playing':'Paused'} · ${current?'Video selected':'No video selected'}</div></div>
+      <div class="roomgrid"><section><div class="card"><div class="player player-shell" id="playerShell"><div id="player" class="playerbox"><div class="playerplaceholder" id="playerPlaceholder">${state.isHost?(current?'Loading YouTube player…':'Add a YouTube video to start playback.'):'Host is playing the video on their phone'}</div></div>${state.isHost?`<div class="end-preview" id="endPreview" aria-hidden="true"><div class="end-preview-title">NEXT UP</div><div class="end-preview-list" id="endPreviewList"></div><div class="end-preview-count" id="endPreviewCount"></div></div><button class="fullscreen-btn" id="fullscreenBtn" type="button" title="Fullscreen" aria-label="Fullscreen">⛶</button>`:''}</div><div class="controls"><button class="control" id="prev" title="Previous">⏮</button><button class="control main" id="play" title="Play/Pause">${state.room.is_playing?'❚❚':'▶'}</button><button class="control" id="next" title="Next">⏭</button></div>${state.isHost?`<div class="volume-control"><span>🔊</span><input id="volume" class="range" type="range" min="0" max="100" value="80" aria-label="Host volume"><span id="volumeValue">80%</span></div>`:''}<div class="small center" id="playState">${state.room.is_playing?'Playing':'Paused'} · ${current?'Video selected':'No video selected'}</div></div>
       <div class="card gap private-card"><div class="section-title section-toggle"><button class="section-heading" id="togglePrivate" data-collapse="private" aria-expanded="${state.privateCollapsed?'false':'true'}"><h2>My List <span class="muted">(private)</span></h2><span class="chevron">${state.privateCollapsed?'▼':'▲'}</span></button><button class="btn" id="privateSelectAll">Select All</button></div><div id="privateBody" class="collapsible-body ${state.privateCollapsed?'collapsed':''}" aria-hidden="${state.privateCollapsed?'true':'false'}"><div class="row"><input class="input" id="privateUrl" placeholder="Paste a YouTube video or playlist link" inputmode="url"><button class="btn primary" id="privateAdd">Add to My List</button></div><div class="small private-help">Build your own list first. Select one, several, or all songs, then send them to the shared queue.</div><div class="queue" id="privateList"></div><div class="private-actions"><button class="btn green" id="uploadSelected">Upload Selected</button><button class="btn" id="uploadAll">Upload All</button></div></div></div><div class="card gap"><div class="section-title section-toggle"><button class="section-heading" id="toggleShared" data-collapse="shared" aria-expanded="${state.sharedCollapsed?'false':'true'}"><h2>Shared Queue <span class="muted">(<span id="queueCount">${q.length}</span>)</span></h2><span class="chevron">${state.sharedCollapsed?'▼':'▲'}</span></button><button class="btn green" id="shuffle">🔀 Shuffle</button></div><div id="sharedBody" class="collapsible-body ${state.sharedCollapsed?'collapsed':''}" aria-hidden="${state.sharedCollapsed?'true':'false'}"><div class="row"><input class="input" id="url" placeholder="Paste a YouTube link" inputmode="url"><button class="btn primary" id="add">Add to Queue</button></div><div class="queue" id="queueList">${q.length?q.map((x,i)=>`<div class="qitem ${x.video_id===current?'now':''}"><div class="qnum">${i+1}</div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.video_id===current?'NOW PLAYING · ':''}${esc(personName(x.added_by))}</div></div><div class="actions queue-actions"><button class="action-sm move-btn" data-up="${esc(x.id)}" title="Move up" ${i===0?'disabled':''}>↑</button><button class="action-sm move-btn" data-down="${esc(x.id)}" title="Move down" ${i===q.length-1?'disabled':''}>↓</button>${x.video_id!==current||state.isHost?`<button class="action-sm" data-play="${esc(x.id)}">Play</button>`:''}<button class="action-sm danger-sm" data-del="${esc(x.id)}">×</button></div></div>`).join(''):'<div class="empty">No videos yet. Add the first YouTube link.</div>'}</div></div></section>
       <aside><div class="card"><div class="section-title"><h2>People in Room</h2><span class="badge">${state.isHost?'HOST':'GUEST'}</span></div><div class="people" id="peopleList">${state.people.map(p=>`<div class="person"><span class="dot" style="background:${esc(p.color)}"></span><span>${esc(p.name)}${p.id===state.me.id?' <span class="muted">(You)</span>':''}${p.user_id===state.room.host_id?' 👑':''}</span></div>`).join('')}</div></div><div class="card gap"><div class="section-title"><h2>Room QR</h2></div><div id="qr" class="qr"></div><div class="small center">Scan to join</div><div class="linkbox">${esc(roomUrl(state.room.code))}</div></div></aside></div><div class="footer">Everyone can add links and control playback. Only the host displays YouTube.</div></div>`;
     bindRoomControls();
@@ -160,12 +160,13 @@
     const list=document.getElementById('queueList');
     if(list)list.innerHTML=q.length?q.map((x,i)=>`<div class="qitem ${x.video_id===current?'now':''}"><div class="qnum">${i+1}</div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.video_id===current?'NOW PLAYING · ':''}${esc(personName(x.added_by))}</div></div><div class="actions queue-actions"><button class="action-sm move-btn" data-up="${esc(x.id)}" title="Move up" ${i===0?'disabled':''}>↑</button><button class="action-sm move-btn" data-down="${esc(x.id)}" title="Move down" ${i===q.length-1?'disabled':''}>↓</button>${x.video_id!==current||state.isHost?`<button class="action-sm" data-play="${esc(x.id)}">Play</button>`:''}<button class="action-sm danger-sm" data-del="${esc(x.id)}">×</button></div></div>`).join(''):'<div class="empty">No videos yet. Add the first YouTube link.</div>';
     if(list){list.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>removeItem(b.dataset.del));list.querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>playQueueItem(b.dataset.play));list.querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.up,-1));list.querySelectorAll('[data-down]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.down,1));}
+    updateEndPreview();
     renderPrivateList();
     const people=document.getElementById('peopleList');if(people)people.innerHTML=state.people.map(p=>`<div class="person"><span class="dot" style="background:${esc(p.color)}"></span><span>${esc(p.name)}${p.id===state.me.id?' <span class="muted">(You)</span>':''}${p.user_id===state.room.host_id?' 👑':''}</span></div>`).join('');
     if(state.isHost&&current)ensureYouTubePlayer();
   }
   function bindRoomControls(){
-    document.getElementById('togglePrivate').onclick=()=>toggleListSection('private');document.getElementById('toggleShared').onclick=()=>toggleListSection('shared');document.getElementById('add').onclick=addLink;document.getElementById('shuffle').onclick=shuffleQueue;const privateAddBtn=document.getElementById('privateAdd'); if(privateAddBtn) privateAddBtn.onclick=(e)=>{e.preventDefault();addPrivateInput();};document.getElementById('privateSelectAll').onclick=selectAllPrivate;document.getElementById('uploadSelected').onclick=()=>uploadPrivate(false);document.getElementById('uploadAll').onclick=()=>uploadPrivate(true);document.getElementById('prev').onclick=()=>sendCommand('previous');document.getElementById('next').onclick=()=>sendCommand('next');document.getElementById('play').onclick=()=>sendCommand(state.room.is_playing?'pause':'play');document.getElementById('showQr').onclick=showQrModal;const vol=document.getElementById('volume');if(vol){vol.oninput=()=>{const v=Number(vol.value);const label=document.getElementById('volumeValue');if(label)label.textContent=v+'%';if(state.playerReady&&state.player)try{state.player.setVolume(v);state.player.unMute();if(v===0)state.player.mute();}catch(_){}};}
+    document.getElementById('togglePrivate').onclick=()=>toggleListSection('private');document.getElementById('toggleShared').onclick=()=>toggleListSection('shared');document.getElementById('add').onclick=addLink;document.getElementById('shuffle').onclick=shuffleQueue;const privateAddBtn=document.getElementById('privateAdd'); if(privateAddBtn) privateAddBtn.onclick=(e)=>{e.preventDefault();addPrivateInput();};document.getElementById('privateSelectAll').onclick=selectAllPrivate;document.getElementById('uploadSelected').onclick=()=>uploadPrivate(false);document.getElementById('uploadAll').onclick=()=>uploadPrivate(true);document.getElementById('prev').onclick=()=>sendCommand('previous');document.getElementById('next').onclick=()=>sendCommand('next');document.getElementById('play').onclick=()=>sendCommand(state.room.is_playing?'pause':'play');document.getElementById('showQr').onclick=showQrModal;const fs=document.getElementById('fullscreenBtn');if(fs)fs.onclick=togglePlayerFullscreen;const vol=document.getElementById('volume');if(vol){vol.oninput=()=>{const v=Number(vol.value);const label=document.getElementById('volumeValue');if(label)label.textContent=v+'%';if(state.playerReady&&state.player)try{state.player.setVolume(v);state.player.unMute();if(v===0)state.player.mute();}catch(_){}};}
     document.getElementById('url').addEventListener('keydown',e=>{if(e.key==='Enter')addLink();});
     document.getElementById('privateUrl').addEventListener('keydown',e=>{if(e.key==='Enter')addPrivateInput();});
     document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>removeItem(b.dataset.del));document.querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>playQueueItem(b.dataset.play));document.querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.up,-1));document.querySelectorAll('[data-down]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.down,1));
@@ -319,6 +320,53 @@
     const playingNow=action==='play';const pos=position;const patch={is_playing:playingNow,position_seconds:pos,updated_at:new Date().toISOString()};const r=await getClient().from('rooms').update(patch).eq('id',state.room.id).select().single();if(!r.error)state.room=r.data;updateRoomView();if(state.isHost)applyLocalPlay(playingNow);await broadcast('room',patch);
   }
 
+  let endPreviewTimer=null;
+  function updateEndPreview(){
+    const list=document.getElementById('endPreviewList');
+    const count=document.getElementById('endPreviewCount');
+    if(!list||!count)return;
+    const idx=state.room?.current_video_id?state.queue.findIndex(x=>x.video_id===state.room.current_video_id):-1;
+    const remaining=idx>=0?state.queue.slice(idx+1):state.queue.slice(0);
+    list.innerHTML=remaining.slice(0,8).map((x,i)=>`<div class="end-preview-item"><span>${i+1}</span><span>${esc(x.title||'YouTube video')}</span></div>`).join('');
+    count.textContent=remaining.length===0?'Nothing remaining':`${remaining.length} remaining`;
+  }
+  function showEndPreview(){
+    const overlay=document.getElementById('endPreview');
+    if(!overlay)return;
+    updateEndPreview();
+    overlay.classList.remove('show');
+    void overlay.offsetWidth;
+    overlay.classList.add('show');
+    overlay.setAttribute('aria-hidden','false');
+    clearTimeout(endPreviewTimer);
+    endPreviewTimer=setTimeout(()=>{overlay.classList.remove('show');overlay.setAttribute('aria-hidden','true');},5000);
+  }
+  function hideEndPreview(){
+    const overlay=document.getElementById('endPreview');
+    if(!overlay)return;
+    clearTimeout(endPreviewTimer);
+    overlay.classList.remove('show');
+    overlay.setAttribute('aria-hidden','true');
+  }
+  async function togglePlayerFullscreen(){
+    const shell=document.getElementById('playerShell');
+    if(!shell)return;
+    try{
+      if(document.fullscreenElement){await document.exitFullscreen();}
+      else await shell.requestFullscreen();
+    }catch(e){notify('Fullscreen is not available in this browser.','info');}
+  }
+  document.addEventListener('fullscreenchange',()=>{
+    const shell=document.getElementById('playerShell');
+    const btn=document.getElementById('fullscreenBtn');
+    if(!shell||!btn)return;
+    const active=document.fullscreenElement===shell;
+    shell.classList.toggle('is-fullscreen',active);
+    btn.textContent=active?'⛶':'⛶';
+    btn.title=active?'Exit fullscreen':'Fullscreen';
+    btn.setAttribute('aria-label',active?'Exit fullscreen':'Fullscreen');
+  });
+
   function loadYouTubeAPI(){
     if(!state.isHost)return;
     if(state.ytReady&&window.YT&&window.YT.Player){ensureYouTubePlayer();return;}
@@ -353,7 +401,7 @@
       state.player=new YT.Player('player',{
         width:'100%',height:'100%',
         videoId:state.room.current_video_id,
-        playerVars:{playsinline:1,controls:1,rel:0,enablejsapi:1,origin:location.origin},
+        playerVars:{playsinline:1,controls:1,fs:0,rel:0,enablejsapi:1,origin:location.origin},
         events:{
           onReady:()=>{
             state.playerReady=true;
@@ -363,7 +411,7 @@
             else state.player.cueVideoById({videoId:state.room.current_video_id,startSeconds:p});
           },
           onStateChange:async e=>{
-            if(e.data===YT.PlayerState.ENDED){await advanceAfterEnd();}
+            if(e.data===YT.PlayerState.ENDED){showEndPreview();await advanceAfterEnd();}
             else if(e.data===YT.PlayerState.PLAYING){
               state.room.is_playing=true;state.room.position_seconds=currentTime();await broadcast('room',{is_playing:true,position_seconds:state.room.position_seconds});
             }else if(e.data===YT.PlayerState.PAUSED){
@@ -382,6 +430,7 @@
 
   function loadVideo(id,pos,play){
     if(!state.isHost)return;
+    hideEndPreview();
     if(!state.playerReady||!state.player){ensureYouTubePlayer();setTimeout(()=>{if(state.playerReady&&state.player)loadVideo(id,pos,play);},500);return;}
     try{
       state.player.loadVideoById({videoId:id,startSeconds:Number(pos||0)});
