@@ -966,3 +966,68 @@ body{
   .main-section .section-static-label .section-count{font-size:13px!important}
   .main-section .section-static-label .section-private{font-size:9px!important}
 }
+
+/* MOBILE HEADER FINAL: compact equal action buttons with centered section name */
+@media (max-width: 780px){
+  .main-section .section-title.section-toggle{
+    display:grid!important;
+    grid-template-columns:116px minmax(0,1fr) 116px!important;
+    align-items:center!important;
+    gap:8px!important;
+    width:100%!important;
+    min-width:0!important;
+  }
+  .main-section .section-title.section-toggle > .collapse-btn,
+  .main-section .section-title.section-toggle > .section-action-btn{
+    box-sizing:border-box!important;
+    width:116px!important;
+    min-width:116px!important;
+    max-width:116px!important;
+    height:60px!important;
+    min-height:60px!important;
+    max-height:60px!important;
+    margin:0!important;
+    padding:0 8px!important;
+    border-radius:14px!important;
+  }
+  .main-section .section-title.section-toggle > .section-static-label{
+    min-width:0!important;
+    width:100%!important;
+    overflow:hidden!important;
+    text-overflow:ellipsis!important;
+    white-space:nowrap!important;
+    justify-content:center!important;
+    text-align:center!important;
+    font-size:18px!important;
+    line-height:1.1!important;
+    letter-spacing:0!important;
+  }
+  .main-section .section-static-label .section-count{
+    font-size:14px!important;
+    margin-left:3px!important;
+  }
+  .main-section .section-static-label .section-private{
+    font-size:10px!important;
+    margin-left:4px!important;
+  }
+}
+@media (max-width:520px){
+  .main-section .section-title.section-toggle{
+    grid-template-columns:96px minmax(0,1fr) 96px!important;
+    gap:6px!important;
+  }
+  .main-section .section-title.section-toggle > .collapse-btn,
+  .main-section .section-title.section-toggle > .section-action-btn{
+    width:96px!important;
+    min-width:96px!important;
+    max-width:96px!important;
+    height:54px!important;
+    min-height:54px!important;
+    max-height:54px!important;
+    border-radius:12px!important;
+    padding:0 6px!important;
+  }
+  .main-section .section-title.section-toggle > .section-static-label{font-size:16px!important}
+  .main-section .section-static-label .section-count{font-size:12px!important}
+  .main-section .section-static-label .section-private{font-size:9px!important}
+}
