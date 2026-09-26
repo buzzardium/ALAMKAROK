@@ -71,7 +71,16 @@ create policy queue_insert on public.queue_items for insert to anon, authenticat
 create policy queue_update on public.queue_items for update to anon, authenticated using (true) with check (true);
 create policy queue_delete on public.queue_items for delete to anon, authenticated using (true);
 
--- Realtime publication for database changes.
-alter publication supabase_realtime add table public.rooms;
-alter publication supabase_realtime add table public.participants;
-alter publication supabase_realtime add table public.queue_items;
+-- Realtime publication for database changes. Safe to run more than once.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname='supabase_realtime' AND schemaname='public' AND tablename='rooms') THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.rooms;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname='supabase_realtime' AND schemaname='public' AND tablename='participants') THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.participants;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname='supabase_realtime' AND schemaname='public' AND tablename='queue_items') THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.queue_items;
+  END IF;
+END $$;
