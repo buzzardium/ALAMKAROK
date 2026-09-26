@@ -93,7 +93,7 @@
     try{
       const client=getClient(); const {data,error}=await client.from('rooms').select('*').eq('code',code).maybeSingle();
       if(error) throw error; if(!data) return notify('Room not found. Check the code.','error');
-      const userId=uuid(); nameModal(code,false,userId,name=>registerParticipant(data,false,userId,name).catch(e=>errorScreen('Could not join the room',e.message)));
+      const userId=uuid(); nameModal(code,false,name=>registerParticipant(data,false,userId,name).catch(e=>errorScreen('Could not join the room',e.message)));
     }catch(e){notify(e.message||'Could not join room','error');}
   }
   async function registerParticipant(room,isHost,userId,name){
