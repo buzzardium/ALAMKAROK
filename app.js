@@ -798,20 +798,44 @@
     const end=a.expires_at?Date.parse(a.expires_at):Infinity;
     return a.active!==false && start<=now && end>now;
   }
+  function announcementTodayKey(){
+    const d=new Date();
+    // Deliberately use the browser's local calendar date so the counter resets
+    // at local midnight on the user's device.
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
   function announcementViewCountKey(id){return `alamkarok-announcement-views-${id}`;}
-  function announcementViewCount(id){
+  function announcementViewState(id){
     try{
       const key=announcementViewCountKey(id);
       const raw=localStorage.getItem(key);
-      if(raw!==null){const n=Number(raw);return Number.isFinite(n)&&n>=0?n:0;}
-      // Migrate the old one-time-seen flag so existing users get the new 5-view behavior.
+      if(raw){
+        const parsed=JSON.parse(raw);
+        if(parsed&&parsed.date===announcementTodayKey()&&Number.isFinite(Number(parsed.count))&&Number(parsed.count)>=0){
+          return {date:parsed.date,count:Number(parsed.count)};
+        }
+      }
+      // Migrate the old numeric counter and old one-time-seen flag into today's
+      // daily counter. Existing users are not permanently locked out.
+      const legacyCount=raw!==null&&!String(raw).trim().startsWith('{')?Number(raw):NaN;
       const oldKey=`alamkarok-announcement-seen-${id}`;
-      if(localStorage.getItem(oldKey)!==null){localStorage.removeItem(oldKey);}
+      if(Number.isFinite(legacyCount)&&legacyCount>=0){
+        const migrated={date:announcementTodayKey(),count:Math.min(legacyCount,5)};
+        localStorage.setItem(key,JSON.stringify(migrated));
+        return migrated;
+      }
+      if(localStorage.getItem(oldKey)!==null)localStorage.removeItem(oldKey);
     }catch(_){ }
-    return 0;
+    return {date:announcementTodayKey(),count:0};
   }
+  function announcementViewCount(id){return announcementViewState(id).count;}
   function recordAnnouncementView(id){
-    try{localStorage.setItem(announcementViewCountKey(id),String(announcementViewCount(id)+1));}catch(_){ }
+    try{
+      const today=announcementTodayKey();
+      const state=announcementViewState(id);
+      const next={date:today,count:Math.min(5,state.date===today?state.count+1:1)};
+      localStorage.setItem(announcementViewCountKey(id),JSON.stringify(next));
+    }catch(_){ }
   }
   async function getActiveAnnouncement(){
     try{
@@ -826,7 +850,7 @@
   }
   function showAnnouncement(a){
     if(!a||document.getElementById('announcementOverlay'))return;
-    // Show once per page visit, up to 5 visits for each announcement on this browser/device.
+    // Show up to 5 times per local calendar day for each announcement on this browser/device.
     if(announcementViewCount(a.id)>=5)return;
     recordAnnouncementView(a.id);
     const back=document.createElement('div');
