@@ -800,8 +800,6 @@
   }
   function announcementTodayKey(){
     const d=new Date();
-    // Deliberately use the browser's local calendar date so the counter resets
-    // at local midnight on the user's device.
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   }
   function announcementViewCountKey(id){return `alamkarok-announcement-views-${id}`;}
@@ -815,8 +813,6 @@
           return {date:parsed.date,count:Number(parsed.count)};
         }
       }
-      // Migrate the old numeric counter and old one-time-seen flag into today's
-      // daily counter. Existing users are not permanently locked out.
       const legacyCount=raw!==null&&!String(raw).trim().startsWith('{')?Number(raw):NaN;
       const oldKey=`alamkarok-announcement-seen-${id}`;
       if(Number.isFinite(legacyCount)&&legacyCount>=0){
@@ -850,7 +846,7 @@
   }
   function showAnnouncement(a){
     if(!a||document.getElementById('announcementOverlay'))return;
-    // Show up to 5 times per local calendar day for each announcement on this browser/device.
+    // Show once per page visit, up to 5 visits for each announcement on this browser/device.
     if(announcementViewCount(a.id)>=5)return;
     recordAnnouncementView(a.id);
     const back=document.createElement('div');
