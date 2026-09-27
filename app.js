@@ -64,6 +64,7 @@
       </div>
       <div class="featuregrid"><div>📺 <b>Host player</b><span>Only the host plays YouTube</span></div><div>🔀 <b>Shared queue</b><span>Everyone sees the same order</span></div><div>🎛️ <b>Shared controls</b><span>Everyone can play, pause, next and previous</span></div><div>👥 <b>People + colours</b><span>Name required when joining</span></div></div>
     </div><div class="footer">ALAMKAROK • internet-based shared queue</div></div>`;
+    if(!configProblem&&!sdkProblem)loadAnnouncement();
     if(!configProblem&&!sdkProblem){
       document.getElementById('create').onclick=createRoom;
       document.getElementById('joinCode').onclick=()=>joinRoom(document.getElementById('roomCode').value.trim().toUpperCase());
@@ -86,7 +87,7 @@
     if(sb) return sb;
     if(!validConfig()) throw new Error('Supabase configuration is missing or invalid.');
     if(!window.supabase || typeof window.supabase.createClient!=='function') throw new Error('Supabase browser library failed to load.');
-    sb=window.supabase.createClient(cfg.SUPABASE_URL,cfg.SUPABASE_ANON_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
+    sb=window.supabase.createClient(cfg.SUPABASE_URL,cfg.SUPABASE_ANON_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});
     return sb;
   }
 
@@ -181,6 +182,7 @@
       <div class="footer">Everyone can add links and control playback. Only the host displays YouTube.</div></div>`;
     bindRoomControls();
     if(state.isHost&&state.room.current_video_id)ensureYouTubePlayer();
+    loadAnnouncement();
   }
 
   function updateRoomView(){
@@ -765,6 +767,100 @@
     try{play?state.player.playVideo():state.player.pauseVideo();}catch(e){notify('Could not control the YouTube player.','error');}
   }
 
+  let announcementTimer=null;
+  function announcementIsCurrent(a){
+    const now=Date.now();
+    const start=a.starts_at?Date.parse(a.starts_at):-Infinity;
+    const end=a.expires_at?Date.parse(a.expires_at):Infinity;
+    return a.active!==false && start<=now && end>now;
+  }
+  function announcementSeenKey(id){return `alamkarok-announcement-seen-${id}`;}
+  async function getActiveAnnouncement(){
+    try{
+      const r=await getClient().from('announcements').select('*').eq('active',true).order('created_at',{ascending:false}).limit(20);
+      if(r.error)return null;
+      return (r.data||[]).find(announcementIsCurrent)||null;
+    }catch(_){return null;}
+  }
+  function closeAnnouncement(id){
+    const el=document.getElementById('announcementOverlay');
+    if(el)el.remove();
+    try{localStorage.setItem(announcementSeenKey(id),'1');}catch(_){ }
+  }
+  function showAnnouncement(a){
+    if(!a||document.getElementById('announcementOverlay'))return;
+    try{if(localStorage.getItem(announcementSeenKey(a.id))==='1')return;}catch(_){ }
+    const back=document.createElement('div');
+    back.className='announcement-overlay';
+    back.id='announcementOverlay';
+    const image=a.image_url?`<div class="announcement-image-wrap"><img class="announcement-image" src="${esc(a.image_url)}" alt=""></div>`:'';
+    const button=a.button_text&&a.button_url?`<a class="btn primary announcement-button" href="${esc(a.button_url)}" target="_blank" rel="noopener noreferrer">${esc(a.button_text)}</a>`:'';
+    back.innerHTML=`<div class="announcement-modal" role="dialog" aria-modal="true" aria-labelledby="announcementTitle"><button class="announcement-close" id="announcementClose" type="button" aria-label="Close announcement">×</button>${image}<div class="announcement-content"><div class="announcement-kicker">📢 ANNOUNCEMENT</div><h2 id="announcementTitle">${esc(a.title||'Announcement')}</h2>${a.message?`<div class="announcement-message">${esc(a.message).replace(/\n/g,'<br>')}</div>`:''}${button}</div></div>`;
+    document.body.appendChild(back);
+    back.querySelector('#announcementClose').onclick=()=>closeAnnouncement(a.id);
+    back.addEventListener('click',e=>{if(e.target===back)closeAnnouncement(a.id);});
+    const onKey=e=>{if(e.key==='Escape'){closeAnnouncement(a.id);document.removeEventListener('keydown',onKey);}};
+    document.addEventListener('keydown',onKey);
+  }
+  async function loadAnnouncement(){
+    if(new URLSearchParams(location.search).get('admin')==='1')return;
+    const a=await getActiveAnnouncement();
+    if(a)showAnnouncement(a);
+  }
+
+  function adminStyles(){return `
+    <style id="adminInlineStyles">
+      .admin-wrap{width:min(980px,100%);padding:20px}.admin-top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:18px}.admin-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(280px,.9fr);gap:16px}.admin-card{padding:18px}.admin-card h1,.admin-card h2{margin:0 0 8px}.admin-form{display:grid;gap:12px}.admin-label{display:grid;gap:6px;font-size:12px;color:#94a2b5;font-weight:700;text-transform:uppercase;letter-spacing:.06em}.admin-textarea{min-height:140px;resize:vertical}.admin-check{display:flex;align-items:center;gap:8px;color:#cbd5e1;font-size:14px}.admin-dates{display:grid;grid-template-columns:1fr 1fr;gap:10px}.admin-actions{display:flex;gap:8px;flex-wrap:wrap}.admin-list{display:grid;gap:10px;margin-top:14px}.admin-item{padding:13px;border:1px solid #243246;background:#0b111a;border-radius:12px}.admin-item-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.admin-item-title{font-weight:750;color:#eef3f9}.admin-item-meta{font-size:11px;color:#718096;margin-top:4px}.admin-item-preview{max-height:110px;max-width:100%;object-fit:cover;border-radius:8px;margin-top:10px}.admin-badge{font-size:11px;padding:4px 7px;border-radius:999px;border:1px solid #294337;color:#78ddb5;background:#10251f}.admin-badge.off{border-color:#47313a;color:#ef9cae;background:#26161c}.admin-empty{color:#718096;font-size:13px;padding:14px 0}.admin-error{color:#ff9cab;background:#28161d;border:1px solid #57303a;padding:10px;border-radius:10px;font-size:13px}.admin-success{color:#75dfb8;background:#10251f;border:1px solid #285342;padding:10px;border-radius:10px;font-size:13px}.admin-login{max-width:430px;margin:8vh auto}.admin-preview{position:relative}.admin-preview .announcement-modal{position:relative;inset:auto;transform:none;margin:0;max-height:none}.admin-preview .announcement-overlay{position:relative;inset:auto;background:none;padding:0}.admin-file{font-size:12px;color:#8290a4}
+      @media(max-width:760px){.admin-grid{grid-template-columns:1fr}.admin-dates{grid-template-columns:1fr}.admin-wrap{padding:14px}.admin-top{align-items:flex-start}.admin-top .btn{white-space:nowrap}}
+    </style>`;}
+  async function adminIsAdmin(){
+    const {data:{session}}=await getClient().auth.getSession();
+    if(!session)return false;
+    const r=await getClient().from('admin_users').select('user_id').eq('user_id',session.user.id).maybeSingle();
+    return !r.error&&!!r.data;
+  }
+  async function renderAdmin(){
+    app.innerHTML=adminStyles()+`<div class="admin-wrap"><div class="admin-top"><div><div class="brand">ALAMKAROK</div><div class="small">Announcement Manager</div></div><button class="btn" id="adminBack">Back to ALAMKAROK</button></div><div id="adminArea"></div></div>`;
+    document.getElementById('adminBack').onclick=()=>{location.href=location.pathname;};
+    const area=document.getElementById('adminArea');
+    const {data:{session}}=await getClient().auth.getSession();
+    if(!session){renderAdminLogin(area);return;}
+    if(!(await adminIsAdmin())){area.innerHTML=`<div class="card admin-card"><h1>Access not enabled</h1><p class="sub">This account is signed in, but it is not listed as an ALAMKAROK administrator.</p><button class="btn" id="adminSignOut">Sign out</button></div>`;document.getElementById('adminSignOut').onclick=async()=>{await getClient().auth.signOut();renderAdmin();};return;}
+    renderAdminDashboard(area,session.user);
+  }
+  function renderAdminLogin(area){
+    area.innerHTML=`<div class="card admin-card admin-login"><h1>Admin Login</h1><p class="sub">Sign in to publish ALAMKAROK announcements.</p><div id="adminMsg"></div><form class="admin-form" id="adminLoginForm"><label class="admin-label">Email<input class="input" id="adminEmail" type="email" autocomplete="username" required></label><label class="admin-label">Password<input class="input" id="adminPassword" type="password" autocomplete="current-password" required></label><button class="btn primary" type="submit">Sign In</button></form></div>`;
+    area.querySelector('#adminLoginForm').onsubmit=async e=>{e.preventDefault();const msg=area.querySelector('#adminMsg');msg.innerHTML='';const r=await getClient().auth.signInWithPassword({email:area.querySelector('#adminEmail').value.trim(),password:area.querySelector('#adminPassword').value});if(r.error){msg.innerHTML=`<div class="admin-error">${esc(r.error.message)}</div>`;return;}renderAdmin();};
+  }
+  async function adminAnnouncements(){const r=await getClient().from('announcements').select('*').order('created_at',{ascending:false});return r.error?[]:(r.data||[]);}
+  function adminFormHtml(edit){
+    const a=edit||{};
+    const iso=v=>v?new Date(v).toISOString().slice(0,16):'';
+    return `<form class="admin-form" id="announcementForm"><input type="hidden" id="annId" value="${esc(a.id||'')}"><label class="admin-label">Title<input class="input" id="annTitle" maxlength="120" value="${esc(a.title||'')}" placeholder="🎉 New Feature Available!" required></label><label class="admin-label">Message<textarea class="input admin-textarea" id="annMessage" maxlength="4000" placeholder="Write your announcement...">${esc(a.message||'')}</textarea></label><label class="admin-label">Image <span class="admin-file">optional</span><input class="input" id="annImage" type="file" accept="image/png,image/jpeg,image/webp,image/gif"><input class="input" id="annImageUrl" type="url" value="${esc(a.image_url||'')}" placeholder="Or paste an image URL"><span class="admin-file">${a.image_url?'Current image is set. Uploading a new image replaces it.':''}</span></label><label class="admin-label">Button text <span class="admin-file">optional</span><input class="input" id="annButtonText" maxlength="50" value="${esc(a.button_text||'')}" placeholder="Learn More"></label><label class="admin-label">Button link <span class="admin-file">optional</span><input class="input" id="annButtonUrl" type="url" value="${esc(a.button_url||'')}" placeholder="https://..."></label><div class="admin-dates"><label class="admin-label">Start <input class="input" id="annStart" type="datetime-local" value="${iso(a.starts_at)}"></label><label class="admin-label">Expiry <input class="input" id="annExpiry" type="datetime-local" value="${iso(a.expires_at)}"></label></div><label class="admin-check"><input id="annActive" type="checkbox" ${a.active!==false?'checked':''}> Active</label><div class="admin-actions"><button class="btn primary" type="submit">${a.id?'Update':'Publish'}</button>${a.id?'<button class="btn" type="button" id="annCancel">Cancel Edit</button>':''}</div></form>`;
+  }
+  async function uploadAnnouncementImage(file){
+    if(!file)return null;
+    const ext=(file.name.split('.').pop()||'jpg').toLowerCase().replace(/[^a-z0-9]/g,'')||'jpg';
+    const path=`${crypto.randomUUID()}.${ext}`;
+    const r=await getClient().storage.from('announcement-images').upload(path,file,{upsert:false,contentType:file.type||undefined});
+    if(r.error)throw r.error;
+    return getClient().storage.from('announcement-images').getPublicUrl(path).data.publicUrl;
+  }
+  async function renderAdminDashboard(area,user){
+    let editing=null;
+    const draw=async()=>{
+      const rows=await adminAnnouncements();
+      area.innerHTML=`<div class="admin-grid"><section class="card admin-card"><div class="admin-top"><div><h1>${editing?'Edit Announcement':'New Announcement'}</h1><div class="small">${esc(user.email||'')}</div></div></div><div id="adminFormMsg"></div>${adminFormHtml(editing)}</section><section class="card admin-card"><h2>Published Announcements</h2><div class="small">Active announcements appear to visitors once, until they close them.</div><div class="admin-list">${rows.length?rows.map(a=>{const current=announcementIsCurrent(a);return `<div class="admin-item"><div class="admin-item-head"><div><div class="admin-item-title">${esc(a.title||'Untitled')}</div><div class="admin-item-meta">${a.expires_at?'Expires '+new Date(a.expires_at).toLocaleString():'No expiry'}</div></div><span class="admin-badge ${current?'':'off'}">${current?'ACTIVE':'INACTIVE'}</span></div>${a.message?`<div class="admin-item-meta">${esc(a.message).slice(0,180)}</div>`:''}${a.image_url?`<img class="admin-item-preview" src="${esc(a.image_url)}" alt="">`:''}<div class="admin-actions" style="margin-top:10px"><button class="btn" data-edit="${esc(a.id)}">Edit</button><button class="btn" data-toggle="${esc(a.id)}">${a.active?'Disable':'Enable'}</button><button class="btn" data-delete="${esc(a.id)}">Delete</button></div></div>`}).join(''):'<div class="admin-empty">No announcements yet.</div>'}</div></section></div>`;
+      const form=area.querySelector('#announcementForm');
+      form.onsubmit=async e=>{e.preventDefault();const msg=area.querySelector('#adminFormMsg');msg.innerHTML='';try{let imageUrl=area.querySelector('#annImageUrl').value.trim()||null;const file=area.querySelector('#annImage').files?.[0];if(file)imageUrl=await uploadAnnouncementImage(file);const payload={title:area.querySelector('#annTitle').value.trim(),message:area.querySelector('#annMessage').value, image_url:imageUrl,button_text:area.querySelector('#annButtonText').value.trim()||null,button_url:area.querySelector('#annButtonUrl').value.trim()||null,active:area.querySelector('#annActive').checked,starts_at:area.querySelector('#annStart').value?new Date(area.querySelector('#annStart').value).toISOString():new Date().toISOString(),expires_at:area.querySelector('#annExpiry').value?new Date(area.querySelector('#annExpiry').value).toISOString():null};if(!payload.title)throw new Error('Title is required.');let r;if(editing)r=await getClient().from('announcements').update(payload).eq('id',editing.id);else r=await getClient().from('announcements').insert(payload);if(r.error)throw r.error;editing=null;await draw();}catch(e){msg.innerHTML=`<div class="admin-error">${esc(e.message||String(e))}</div>`;}};
+      area.querySelectorAll('[data-edit]').forEach(b=>b.onclick=async()=>{const rows2=await adminAnnouncements();editing=rows2.find(x=>x.id===b.dataset.edit)||null;await draw();});
+      area.querySelectorAll('[data-toggle]').forEach(b=>b.onclick=async()=>{const rows2=await adminAnnouncements();const a=rows2.find(x=>x.id===b.dataset.toggle);if(!a)return;await getClient().from('announcements').update({active:!a.active}).eq('id',a.id);await draw();});
+      area.querySelectorAll('[data-delete]').forEach(b=>b.onclick=async()=>{if(!confirm('Delete this announcement?'))return;await getClient().from('announcements').delete().eq('id',b.dataset.delete);await draw();});
+      const cancel=area.querySelector('#annCancel');if(cancel)cancel.onclick=()=>{editing=null;draw();};
+    };
+    await draw();
+  }
+
   window.addEventListener('error',e=>{if(!document.getElementById('app'))return;console.error(e.error||e.message);});
   window.addEventListener('unhandledrejection',e=>{console.error(e.reason);});
 
@@ -772,8 +868,9 @@
     if(!validConfig() || !window.supabase){renderHome();return;}
     try{
       getClient();
-      const code=new URLSearchParams(location.search).get('room');
-      if(code) await joinRoom(code.toUpperCase()); else renderHome();
+      const params=new URLSearchParams(location.search);
+      if(params.get('admin')==='1') await renderAdmin();
+      else { const code=params.get('room'); if(code) await joinRoom(code.toUpperCase()); else renderHome(); await loadAnnouncement(); }
     }catch(e){errorScreen('ALAMKAROK could not start',e.message||'Unknown startup error','Check config.js and make sure the Supabase URL and publishable key are correct.');}
   })();
 })();
