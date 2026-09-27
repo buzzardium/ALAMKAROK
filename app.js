@@ -798,7 +798,21 @@
     const end=a.expires_at?Date.parse(a.expires_at):Infinity;
     return a.active!==false && start<=now && end>now;
   }
-  function announcementSeenKey(id){return `alamkarok-announcement-seen-${id}`;}
+  function announcementViewCountKey(id){return `alamkarok-announcement-views-${id}`;}
+  function announcementViewCount(id){
+    try{
+      const key=announcementViewCountKey(id);
+      const raw=localStorage.getItem(key);
+      if(raw!==null){const n=Number(raw);return Number.isFinite(n)&&n>=0?n:0;}
+      // Migrate the old one-time-seen flag so existing users get the new 5-view behavior.
+      const oldKey=`alamkarok-announcement-seen-${id}`;
+      if(localStorage.getItem(oldKey)!==null){localStorage.removeItem(oldKey);}
+    }catch(_){ }
+    return 0;
+  }
+  function recordAnnouncementView(id){
+    try{localStorage.setItem(announcementViewCountKey(id),String(announcementViewCount(id)+1));}catch(_){ }
+  }
   async function getActiveAnnouncement(){
     try{
       const r=await getClient().from('announcements').select('*').eq('active',true).order('created_at',{ascending:false}).limit(20);
@@ -809,11 +823,12 @@
   function closeAnnouncement(id){
     const el=document.getElementById('announcementOverlay');
     if(el)el.remove();
-    try{localStorage.setItem(announcementSeenKey(id),'1');}catch(_){ }
   }
   function showAnnouncement(a){
     if(!a||document.getElementById('announcementOverlay'))return;
-    try{if(localStorage.getItem(announcementSeenKey(a.id))==='1')return;}catch(_){ }
+    // Show once per page visit, up to 5 visits for each announcement on this browser/device.
+    if(announcementViewCount(a.id)>=5)return;
+    recordAnnouncementView(a.id);
     const back=document.createElement('div');
     back.className='announcement-overlay';
     back.id='announcementOverlay';
@@ -894,7 +909,7 @@
       getClient();
       const params=new URLSearchParams(location.search);
       if(params.get('admin')==='1') await renderAdmin();
-      else { const code=params.get('room'); if(code) await joinRoom(code.toUpperCase()); else renderHome(); await loadAnnouncement(); }
+      else { const code=params.get('room'); if(code) await joinRoom(code.toUpperCase()); else renderHome(); }
     }catch(e){errorScreen('ALAMKAROK could not start',e.message||'Unknown startup error','Check config.js and make sure the Supabase URL and publishable key are correct.');}
   })();
 })();
