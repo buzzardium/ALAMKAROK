@@ -63,7 +63,7 @@
         <div class="divider"><span>or join an existing room</span></div>
         <div class="row"><input class="input" id="roomCode" maxlength="5" placeholder="Room code e.g. 7K4P9" autocomplete="off" style="flex:1;text-transform:uppercase"><button class="btn" id="joinCode" ${configProblem||sdkProblem?'disabled':''}>Join</button></div>
       </div>
-      <div class="featuregrid"><div>📺 <b>Host player</b><span>Only the host plays YouTube</span></div><div>🔀 <b>Shared queue</b><span>Everyone sees the same order</span></div><div>🎛️ <b>Shared controls</b><span>Everyone can play, pause, next and previous</span></div><div>👥 <b>People + colours</b><span>Name required when joining</span></div></div>
+      <div class="featuregrid"><div>📺 <b>Host playback</b><span>Audio and video play through the host device</span></div><div>🔀 <b>Shared queue</b><span>Everyone sees the same order</span></div><div>🎛️ <b>Shared controls</b><span>Everyone can play, pause, next and previous</span></div><div>👥 <b>People + colours</b><span>Name required when joining</span></div></div>
     </div><div class="footer">ALAMKAROK • internet-based shared queue</div></div>`;
     if(!configProblem&&!sdkProblem)loadAnnouncement();
     if(!configProblem&&!sdkProblem){
@@ -73,13 +73,36 @@
     }
   }
 
+  // Block severe racial, ethnic, and religious slurs in public display names.
+  // Matching is normalized to catch common punctuation/spacing/number substitutions.
+  const BLOCKED_NAME_TERMS = [
+    'nigger','nigga','niggah','niggaz','jigaboo','porchmonkey',
+    'kike','yid','heeb',
+    'chink','gook','jap',
+    'spic','spick','beaner','wetback',
+    'paki','raghead','towelhead','sandnigger',
+    'gypsy','kafir','kaffir','sandmonkey'
+  ];
+  const NAME_LEET_MAP={'0':'o','1':'i','3':'e','4':'a','5':'s','7':'t','8':'b','9':'g','@':'a','$':'s','!':'i'};
+  function normalizeNameForModeration(value){
+    return String(value||'').toLowerCase()
+      .normalize('NFKD').replace(/[\u0300-\u036f]/g,'')
+      .replace(/[01345789@$!]/g,ch=>NAME_LEET_MAP[ch]||ch)
+      .replace(/[^a-z0-9]+/g,'')
+      .replace(/(.)\1{2,}/g,'$1$1');
+  }
+  function containsBlockedNameTerm(value){
+    const normalized=normalizeNameForModeration(value);
+    return BLOCKED_NAME_TERMS.some(term=>normalized.includes(term));
+  }
+
   function nameModal(code, isHost, callback){
     const back=document.createElement('div'); back.className='modalback';
     back.innerHTML=`<div class="modal"><div class="brand">ALAMKAROK</div><div class="small">Room <b>${esc(code)}</b></div><h2>Join the room</h2><p class="sub">Choose the name everyone will see. A colour will be assigned automatically.</p><input class="input" id="joinName" maxlength="40" placeholder="Your name" autocomplete="name"><div class="modalactions"><button class="btn" id="cancelName">Cancel</button><button class="btn primary" id="confirmName">${isHost?'Start Room':'Join Room'}</button></div></div>`;
     document.body.appendChild(back);
     const input=back.querySelector('#joinName'); setTimeout(()=>input.focus(),50);
     back.querySelector('#cancelName').onclick=()=>back.remove();
-    back.querySelector('#confirmName').onclick=()=>{const n=input.value.trim();if(!n){input.focus();return notify('Enter a name first','error');}back.remove();callback(n);};
+    back.querySelector('#confirmName').onclick=()=>{const n=input.value.trim();if(!n){input.focus();return notify('Enter a name first','error');}if(containsBlockedNameTerm(n)){input.focus();return notify("That name isn't allowed. Please choose another name.",'error');}back.remove();callback(n);};
     input.addEventListener('keydown',e=>{if(e.key==='Enter')back.querySelector('#confirmName').click();});
   }
 
