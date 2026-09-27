@@ -52,9 +52,10 @@
     const configProblem = !validConfig();
     const sdkProblem = !window.supabase || typeof window.supabase.createClient !== 'function';
     app.innerHTML=`<div class="wrap"><div class="hero card">
-      <div class="brand">ALAMKAROK</div><div class="eyebrow">SHARED YOUTUBE ROOM</div>
-      <h1 class="h1">One screen. One shared queue.</h1>
-      <p class="sub">Create a room, show the QR code, and let everyone add videos and control playback from their own phone.</p>
+      <div class="brand">ALAMKAROK</div><div class="eyebrow">SHARED MEDIA ROOM</div>
+      <h1 class="h1">Queue videos. Control playback. Share the room.</h1>
+      <p class="sub">Create a room, show the QR code, and let everyone add <b>YouTube videos to the shared queue</b> and control playback from their own phone.</p>
+      <p class="small home-support-note"><i>Currently supports YouTube videos and YouTube playlists.</i></p>
       ${configProblem?'<div class="notice error"><b>Supabase configuration is missing.</b><br>Open <code>config.js</code> and add your Project URL and <code>sb_publishable_…</code> key.</div>':''}
       ${sdkProblem?'<div class="notice error"><b>Supabase library did not load.</b><br>Check your internet connection and reload.</div>':''}
       <div class="joinbox">
