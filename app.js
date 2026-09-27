@@ -798,40 +798,20 @@
     const end=a.expires_at?Date.parse(a.expires_at):Infinity;
     return a.active!==false && start<=now && end>now;
   }
-  function announcementTodayKey(){
-    const d=new Date();
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-  }
   function announcementViewCountKey(id){return `alamkarok-announcement-views-${id}`;}
-  function announcementViewState(id){
+  function announcementViewCount(id){
     try{
       const key=announcementViewCountKey(id);
       const raw=localStorage.getItem(key);
-      if(raw){
-        const parsed=JSON.parse(raw);
-        if(parsed&&parsed.date===announcementTodayKey()&&Number.isFinite(Number(parsed.count))&&Number(parsed.count)>=0){
-          return {date:parsed.date,count:Number(parsed.count)};
-        }
-      }
-      const legacyCount=raw!==null&&!String(raw).trim().startsWith('{')?Number(raw):NaN;
+      if(raw!==null){const n=Number(raw);return Number.isFinite(n)&&n>=0?n:0;}
+      // Migrate the old one-time-seen flag so existing users get the new 5-view behavior.
       const oldKey=`alamkarok-announcement-seen-${id}`;
-      if(Number.isFinite(legacyCount)&&legacyCount>=0){
-        const migrated={date:announcementTodayKey(),count:Math.min(legacyCount,5)};
-        localStorage.setItem(key,JSON.stringify(migrated));
-        return migrated;
-      }
-      if(localStorage.getItem(oldKey)!==null)localStorage.removeItem(oldKey);
+      if(localStorage.getItem(oldKey)!==null){localStorage.removeItem(oldKey);}
     }catch(_){ }
-    return {date:announcementTodayKey(),count:0};
+    return 0;
   }
-  function announcementViewCount(id){return announcementViewState(id).count;}
   function recordAnnouncementView(id){
-    try{
-      const today=announcementTodayKey();
-      const state=announcementViewState(id);
-      const next={date:today,count:Math.min(5,state.date===today?state.count+1:1)};
-      localStorage.setItem(announcementViewCountKey(id),JSON.stringify(next));
-    }catch(_){ }
+    try{localStorage.setItem(announcementViewCountKey(id),String(announcementViewCount(id)+1));}catch(_){ }
   }
   async function getActiveAnnouncement(){
     try{
@@ -862,7 +842,7 @@
     document.addEventListener('keydown',onKey);
   }
   async function loadAnnouncement(){
-    if(new URLSearchParams(location.search).get('admin')==='1')return;
+    if(location.pathname.replace(/\/+$/, '')==='/admin')return;
     const a=await getActiveAnnouncement();
     if(a)showAnnouncement(a);
   }
@@ -880,7 +860,7 @@
   }
   async function renderAdmin(){
     app.innerHTML=adminStyles()+`<div class="admin-wrap"><div class="admin-top"><div><div class="brand">ALAMKAROK</div><div class="small">Announcement Manager</div></div><button class="btn" id="adminBack">Back to ALAMKAROK</button></div><div id="adminArea"></div></div>`;
-    document.getElementById('adminBack').onclick=()=>{location.href=location.pathname;};
+    document.getElementById('adminBack').onclick=()=>{location.href='/';};
     const area=document.getElementById('adminArea');
     const {data:{session}}=await getClient().auth.getSession();
     if(!session){renderAdminLogin(area);return;}
@@ -928,7 +908,7 @@
     try{
       getClient();
       const params=new URLSearchParams(location.search);
-      if(params.get('admin')==='1') await renderAdmin();
+      if(location.pathname.replace(/\/+$/, '')==='/admin' || params.get('admin')==='1') await renderAdmin();
       else { const code=params.get('room'); if(code) await joinRoom(code.toUpperCase()); else renderHome(); }
     }catch(e){errorScreen('ALAMKAROK could not start',e.message||'Unknown startup error','Check config.js and make sure the Supabase URL and publishable key are correct.');}
   })();
