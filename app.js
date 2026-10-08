@@ -342,7 +342,7 @@
   function openGivePoints(recipientId){const existing=document.getElementById('givePointsPop');if(existing)existing.remove();const p=state.people.find(x=>x.id===recipientId);if(!p)return;const back=document.createElement('div');back.className='point-popover';back.innerHTML=`<div class="point-pop-card"><div class="small">Give points to <b>${esc(p.name)}</b></div><div class="point-options"><button class="btn" data-pts="1">+1 ⭐</button><button class="btn" data-pts="5">+5 ⭐</button><button class="btn primary" data-pts="10">+10 ⭐</button></div><button class="point-close">Cancel</button></div>`;back.id='givePointsPop';document.body.appendChild(back);back.querySelectorAll('[data-pts]').forEach(b=>b.onclick=()=>givePoints(recipientId,Number(b.dataset.pts)));back.querySelector('.point-close').onclick=()=>back.remove();back.onclick=e=>{if(e.target===back)back.remove();};}
   async function givePoints(recipientId,amount){const back=document.getElementById('givePointsPop');if(back)back.remove();if(recipientId===state.me.id)return;if(![1,5,10].includes(amount))return;const recipient=state.people.find(x=>x.id===recipientId);if(!recipient)return;try{const r=await getClient().rpc('give_points',{p_room_id:state.room.id,p_giver_id:state.me.id,p_recipient_id:recipientId,p_amount:amount});if(r.error)throw r.error;await refreshPeople();await broadcast('points',{people:state.people});notify(`Gave ${amount} point${amount===1?'':'s'} to ${recipient.name} ⭐`,'info');}catch(e){notify('Points need the chat/points database update first.','error');}}
   async function refreshQueue(){const r=await getClient().from('queue_items').select('*').eq('room_id',state.room.id).order('position',{ascending:true});if(!r.error){state.queue=r.data||[];updateRoomView();}}
-  async function refreshRoom(){const r=await getClient().from('rooms').select('*').eq('id',state.room.id).single();if(!r.error){const wasHost=!!state.isHost;state.room=r.data;state.queueVersion=Number(r.data.queue_version||0);state.isHost=!!state.me&&state.me.user_id===state.room.host_id;if(wasHost!==state.isHost){if(!state.isHost){try{if(state.player&&typeof state.player.stopVideo==='function')state.player.stopVideo();if(state.player&&typeof state.player.destroy==='function')state.player.destroy();}catch(_){}state.player=null;state.playerReady=false;}updateRoomView();if(state.isHost&&state.room.current_video_id)loadYouTubeAPI();}else{updateRoomView();if(state.isHost&&state.room.current_video_id)ensureYouTubePlayer();}saveRoomSession();}}
+  async function refreshRoom(){const r=await getClient().from('rooms').select('*').eq('id',state.room.id).single();if(!r.error){state.room=r.data;state.queueVersion=Number(r.data.queue_version||0);updateRoomView();if(state.isHost&&state.room.current_video_id)ensureYouTubePlayer();}}
   async function broadcast(event,payload){if(state.channel) await state.channel.send({type:'broadcast',event,payload});}
 
   function renderRoom(){
@@ -684,75 +684,29 @@
     }finally{state.busy=false;}
   }
 
-  function closeHostHandoffModal(){
-    const el=document.getElementById('hostHandoffModal');
-    if(el)el.remove();
-  }
-
-  async function completeHostHandoff(target){
-    if(state.leaving||!state.isHost||!state.room||!state.me||!target)return false;
-    const targetUserId=target.user_id;
-    if(!targetUserId){notify('The selected participant cannot become host.','error');return false;}
-    const client=getClient();
-    state.leaving=true;
-    try{
-      const r=await client.from('rooms').update({host_id:targetUserId,updated_at:new Date().toISOString()}).eq('id',state.room.id).eq('host_id',state.me.user_id).select().single();
-      if(r.error||!r.data)throw r.error||new Error('The host changed before handoff completed.');
-      state.room=r.data;
-      savePreviousRoom();
-      try{if(state.player&&typeof state.player.stopVideo==='function')state.player.stopVideo();if(state.player&&typeof state.player.destroy==='function')state.player.destroy();}catch(_){}
-      state.player=null;state.playerReady=false;
-      if(state.channel)try{await client.removeChannel(state.channel);}catch(_){}
-      if(state.me?.id)await client.from('participants').delete().eq('id',state.me.id);
-      clearRoomSession();
-      closeHostHandoffModal();
-      state.room=null;state.me=null;state.people=[];state.queue=[];state.channel=null;state.isHost=false;state.chatMessages=[];state.privateList=[];state.pendingSwitchSession=null;
-      renderHome();
-      notify(`${target.name} is now the host. You left the room.`,'info');
-      return true;
-    }catch(e){
-      state.leaving=false;
-      notify(e.message||'Could not transfer host.','error');
-      return false;
-    }
-  }
-
-  function showHostHandoffModal(){
-    const others=(state.people||[]).filter(p=>p.id!==state.me?.id&&p.user_id);
-    if(!others.length){leaveRoomNow();return;}
-    const back=document.createElement('div');
-    back.className='modalback';
-    back.id='hostHandoffModal';
-    const peopleHtml=others.map(p=>`<button class="btn host-handoff-person" type="button" data-host-person="${esc(p.id)}"><span class="dot" style="background:${esc(p.color)}"></span>${esc(p.name)}</button>`).join('');
-    back.innerHTML=`<div class="modal host-handoff-modal"><div class="brand">ALAMKAROK</div><div class="small">Room ${esc(state.room.code)}</div><h2>Host Handoff</h2><p class="sub">Other people are still in the room. Choose who should become the new host before you leave.</p><div class="modalactions"><button class="btn green" id="hostRandom">🎲 Random Person</button><button class="btn primary" id="hostSelect">Select Person</button></div><div id="hostPersonPicker" class="host-person-picker" hidden><div class="small">Select the new host:</div><div class="host-person-list">${peopleHtml}</div></div><div class="modalactions"><button class="btn" id="hostHandoffCancel">Cancel</button></div></div>`;
-    document.body.appendChild(back);
-    const pick=()=>back.querySelector('#hostPersonPicker');
-    back.querySelector('#hostHandoffCancel').onclick=()=>closeHostHandoffModal();
-    back.querySelector('#hostSelect').onclick=()=>{const el=pick();if(el)el.hidden=!el.hidden;};
-    back.querySelector('#hostRandom').onclick=async()=>{const target=others[Math.floor(Math.random()*others.length)];await completeHostHandoff(target);};
-    back.querySelectorAll('[data-host-person]').forEach(btn=>btn.onclick=async()=>{const target=others.find(p=>p.id===btn.dataset.hostPerson);await completeHostHandoff(target);});
-  }
-
-  async function leaveRoomNow(){
+  async function leaveRoom(){
+    const confirmed=window.confirm(`Leave room ${state.room?.code||''}?`);
+    if(!confirmed)return;
     state.leaving=true;
     if(state.reconnectTimer){clearTimeout(state.reconnectTimer);state.reconnectTimer=null;}
-    try{if(state.player&&typeof state.player.stopVideo==='function')state.player.stopVideo();if(state.player&&typeof state.player.destroy==='function')state.player.destroy();}catch(_){}
-    try{if(state.channel)await getClient().removeChannel(state.channel);}catch(_){}
-    try{if(state.me?.id)await getClient().from('participants').delete().eq('id',state.me.id);}catch(_){}
+    try{
+      if(state.player&&typeof state.player.stopVideo==='function')state.player.stopVideo();
+      if(state.player&&typeof state.player.destroy==='function')state.player.destroy();
+    }catch(_){}
+    try{
+      if(state.channel){
+        const client=getClient();
+        await client.removeChannel(state.channel);
+      }
+    }catch(_){}
+    try{
+      if(state.me?.id)await getClient().from('participants').delete().eq('id',state.me.id);
+    }catch(_){}
     savePreviousRoom();
     clearRoomSession();
     state.room=null;state.me=null;state.people=[];state.queue=[];state.channel=null;state.player=null;state.playerReady=false;state.isHost=false;state.chatMessages=[];state.privateList=[];state.pendingSwitchSession=null;
     renderHome();
     notify('You left the room.','info');
-  }
-
-  async function leaveRoom(){
-    if(state.leaving)return;
-    if(!state.room||!state.me)return;
-    const confirmed=window.confirm(`Leave room ${state.room.code}?`);
-    if(!confirmed)return;
-    if(state.isHost&&(state.people||[]).some(p=>p.id!==state.me.id)){showHostHandoffModal();return;}
-    await leaveRoomNow();
   }
 
   function bindRoomControls(){
