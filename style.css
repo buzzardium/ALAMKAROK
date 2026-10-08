@@ -1729,5 +1729,5 @@ body{
 }
 
 @media(max-width:780px){
-  #privateBody,#sharedBody{touch-action:pan-y}
+  .playlist-subbody{touch-action:pan-y}
 }
