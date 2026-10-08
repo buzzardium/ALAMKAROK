@@ -1840,6 +1840,16 @@ body{
     grid-template-columns:102px 56px minmax(0,1fr) auto!important;
   }
   .qitem.private-item{
-    grid-template-columns:90px 34px 56px minmax(0,1fr) auto!important;
+    grid-template-columns:30px 102px 56px minmax(0,1fr) auto!important;
   }
+}
+
+/* FINAL MY LIST INTERNAL SCROLLER */
+#privateList.long-list-scroll{
+  display:block!important;
+  overflow-y:scroll!important;
+  overflow-x:hidden!important;
+  overscroll-behavior-y:auto!important;
+  scrollbar-gutter:stable;
+  -webkit-overflow-scrolling:touch;
 }
