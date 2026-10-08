@@ -663,7 +663,12 @@
     const index=state.queue.findIndex(x=>x.id===id);
     const targetIndex=index+direction;
     if(index<0||targetIndex<0||targetIndex>=state.queue.length)return;
-    await reorderSharedQueue(id,state.queue[targetIndex].id);
+    const targetId=state.queue[targetIndex].id;
+    const list=document.getElementById('queueList'),before=captureDragRects(list);
+    [state.queue[index],state.queue[targetIndex]]=[state.queue[targetIndex],state.queue[index]];
+    updateRoomView();
+    requestAnimationFrame(()=>requestAnimationFrame(()=>animateListReorder(document.getElementById('queueList'),before)));
+    await reorderSharedQueue(id,targetId);
   }
 
   async function shuffleQueue(){
@@ -782,8 +787,9 @@
     const list=document.getElementById('privateList'),before=captureDragRects(list);
     [state.privateList[i],state.privateList[j]]=[state.privateList[j],state.privateList[i]];
     savePrivateList();renderPrivateList();
-    requestAnimationFrame(()=>animateListReorder(document.getElementById('privateList'),before));
+    requestAnimationFrame(()=>requestAnimationFrame(()=>animateListReorder(document.getElementById('privateList'),before)));
   }
+
   async function uploadPrivateOne(id){const item=state.privateList.find(x=>x.id===id);if(!item)return;await uploadPrivateItems([item]);}
   function deletePrivate(id){ state.privateList=state.privateList.filter(x=>x.id!==id);savePrivateList();renderPrivateList(); }
   async function addPrivateInput(){
@@ -881,6 +887,12 @@
     }
   }
   function pulsePlaybackControl(id){const btn=document.getElementById(id);if(!btn)return;btn.classList.remove('command-pulse');void btn.offsetWidth;btn.classList.add('command-pulse');setTimeout(()=>btn.classList.remove('command-pulse'),180);}
+  function updatePlaybackControlsUI(){
+    const play=document.getElementById('play');
+    if(play)play.textContent=state.room?.is_playing?'❚❚':'▶';
+    const stateEl=document.getElementById('playState');
+    if(stateEl)stateEl.textContent=(state.room?.is_playing?'Playing':'Paused')+' · '+(state.room?.current_video_id?'Video selected':'No video selected');
+  }
   async function sendCommand(action){
     if(!state.room||!state.me)return;
     pulsePlaybackControl(action==='play'||action==='pause'?'play':action==='previous'?'prev':'next');
@@ -891,11 +903,12 @@
       const target=state.queue[targetIdx];
       if(target){state.room.current_index=targetIdx;state.room.current_video_id=target.video_id;state.room.position_seconds=0;state.room.is_playing=true;}
     }
-    updateRoomView();
+    updatePlaybackControlsUI();
     const payload={from:state.me.id,action};
     broadcast('command',payload).catch(()=>{});
     if(state.isHost)await handleCommandBroadcast(payload);
   }
+
   async function handleCommandBroadcast(payload){
     if(!payload||payload.from===state.me.id && !state.isHost)return;
     if(!state.isHost)return;
