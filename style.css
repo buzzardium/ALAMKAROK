@@ -1852,6 +1852,7 @@ body{
   overflow-y:scroll!important;
   overflow-x:hidden!important;
   overscroll-behavior-y:auto!important;
+  overscroll-behavior-x:hidden!important;
   scrollbar-gutter:stable;
   -webkit-overflow-scrolling:touch;
 }
