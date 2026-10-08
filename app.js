@@ -106,7 +106,33 @@
   }
   function ytThumb(id){ return `https://i.ytimg.com/vi/${encodeURIComponent(id)}/hqdefault.jpg`; }
   function privateKey(){ return state.room&&state.me ? `alamkarok-private-v2-${state.room.code}-${state.me.user_id||state.me.id}` : null; }
-  function loadPrivateList(){ state.privateList=[]; state.privateCollapsed=false; state.sharedCollapsed=false; state.playlistCollapsed={}; try{ const k=privateKey(); if(!k)return; const raw=localStorage.getItem(k); const parsed=raw?JSON.parse(raw):[]; if(Array.isArray(parsed)) state.privateList=parsed.filter(x=>x&&x.video_id); else if(parsed&&typeof parsed==='object'){ state.privateList=Array.isArray(parsed.items)?parsed.items.filter(x=>x&&x.video_id):[]; state.privateCollapsed=!!parsed.privateCollapsed; state.sharedCollapsed=!!parsed.sharedCollapsed; state.playlistCollapsed=(parsed.playlistCollapsed&&typeof parsed.playlistCollapsed==='object')?parsed.playlistCollapsed:{}; } }catch(_){state.privateList=[];} }
+  function loadPrivateList(){ state.privateList=[]; state.privateCollapsed=false; state.sharedCollapsed=false; state.playlistCollapsed={}; try{ const k=privateKey(); if(!k)return; const raw=localStorage.getItem(k); const parsed=raw?JSON.parse(raw):[]; if(Array.isArray(parsed)) state.privateList=parsed.filter(x=>x&&x.video_id); else if(parsed&&typeof parsed==='object'){ state.privateList=Array.isArray(parsed.items)?parsed.items.filter(x=>x&&x.video_id):[]; state.privateCollapsed=!!parsed.privateCollapsed; state.sharedCollapsed=!!parsed.sharedCollapsed; state.playlistCollapsed=(parsed.playlistCollapsed&&typeof parsed.playlistCollapsed==='object')?parsed.playlistCollapsed:{}; } }catch(_){state.privateList=[];} checkUnavailablePrivateVideos(); }
+  async function checkUnavailablePrivateVideos(){
+    const items=state.privateList.slice();
+    if(!items.length)return;
+    let removed=0;
+    const concurrency=6;
+    let cursor=0;
+    async function worker(){
+      while(cursor<items.length){
+        const item=items[cursor++];
+        try{
+          const r=await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${encodeURIComponent(item.video_id)}&format=json`);
+          // Only treat a clear YouTube "not found/unavailable" response as removable.
+          // Network errors and rate limits are kept so temporary failures never delete a saved video.
+          if(r.status===404||r.status===410){
+            const current=state.privateList.find(x=>x.id===item.id);
+            if(current){state.privateList=state.privateList.filter(x=>x.id!==item.id);removed++;}
+          }
+        }catch(_){}
+      }
+    }
+    await Promise.all(Array.from({length:Math.min(concurrency,items.length)},worker));
+    if(!removed)return;
+    savePrivateList();
+    if(document.getElementById('privateList'))renderPrivateList();
+    notify(`${removed} unavailable YouTube video${removed===1?' was':'s were'} removed from My List.`,'info');
+  }
   function savePrivateList(){ try{ const k=privateKey(); if(k)localStorage.setItem(k,JSON.stringify({items:state.privateList,privateCollapsed:state.privateCollapsed,sharedCollapsed:state.sharedCollapsed,playlistCollapsed:state.playlistCollapsed})); }catch(_){} }
   function bindMobilePinchCollapse(){
     if(!window.matchMedia || !window.matchMedia('(max-width:780px)').matches)return;
