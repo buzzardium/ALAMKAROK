@@ -1753,13 +1753,15 @@ body{
   #queueList.long-list-scroll,
   #privateList.long-list-scroll{
     scrollbar-width:thin;
-    overscroll-behavior-y:contain;
+  }
+  #privateList.long-list-scroll{
+    overscroll-behavior-y:auto!important;
   }
 }
 
 @media(max-width:780px){
   #privateList.long-list-scroll{
-    max-height:min(var(--list-scroll-height),65vh)!important;
+    max-height:min(var(--list-scroll-height),55vh)!important;
     min-height:0!important;
   }
   .playlist-subbody{

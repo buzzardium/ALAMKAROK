@@ -459,11 +459,11 @@
         const target=items[Math.min(limit,items.length)-1];
         const limitHeight=target?target.getBoundingClientRect().bottom-listRect.top+4:naturalHeight;
         const shouldScroll=el.id==='privateList'
-          ? naturalHeight>limitHeight || naturalHeight>window.innerHeight*0.65
+          ? items.length>limit
           : items.length>limit;
         if(!shouldScroll)return;
         const height=el.id==='privateList'
-          ? Math.max(220,Math.min(limitHeight,window.innerHeight*0.65))
+          ? Math.max(220,limitHeight)
           : Math.max(220,limitHeight);
         const scrollHeight=Math.ceil(height)+'px';
         el.style.setProperty('--list-scroll-height',scrollHeight);
