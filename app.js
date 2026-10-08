@@ -452,11 +452,18 @@
       el.style.removeProperty('--list-scroll-height');
       requestAnimationFrame(()=>{
         const items=[...el.querySelectorAll('.qitem[data-drag-type]')].filter(item=>item.getBoundingClientRect().height>0);
-        if(items.length<=limit)return;
+        if(!items.length)return;
         const listRect=el.getBoundingClientRect();
-        const target=items[limit-1];
-        if(!target)return;
-        const height=Math.max(220,target.getBoundingClientRect().bottom-listRect.top+4);
+        const naturalHeight=items[items.length-1].getBoundingClientRect().bottom-listRect.top+4;
+        const target=items[Math.min(limit,items.length)-1];
+        const limitHeight=target?target.getBoundingClientRect().bottom-listRect.top+4:naturalHeight;
+        const shouldScroll=el.id==='privateList'
+          ? naturalHeight>limitHeight || naturalHeight>window.innerHeight*0.65
+          : items.length>limit;
+        if(!shouldScroll)return;
+        const height=el.id==='privateList'
+          ? Math.max(220,Math.min(limitHeight,window.innerHeight*0.65))
+          : Math.max(220,limitHeight);
         el.style.setProperty('--list-scroll-height',String(Math.ceil(height))+'px');
         el.classList.add('long-list-scroll');
       });

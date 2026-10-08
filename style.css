@@ -1756,7 +1756,12 @@ body{
 }
 
 @media(max-width:780px){
+  #privateList.long-list-scroll{
+    max-height:min(var(--list-scroll-height),65vh)!important;
+    min-height:0!important;
+  }
   .playlist-subbody{
+
     touch-action:pan-y;
     overscroll-behavior-y:auto;
     -webkit-overflow-scrolling:touch;
