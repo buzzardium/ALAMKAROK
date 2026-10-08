@@ -455,9 +455,11 @@
         const items=[...el.querySelectorAll('.qitem[data-drag-type]')].filter(item=>item.getBoundingClientRect().height>0);
         if(!items.length)return;
         const listRect=el.getBoundingClientRect();
-        const naturalHeight=items[items.length-1].getBoundingClientRect().bottom-listRect.top+4;
+        const scrollTop=el.scrollTop||0;
+        const itemBottom=item=>item.getBoundingClientRect().bottom-listRect.top+scrollTop;
+        const naturalHeight=itemBottom(items[items.length-1])+4;
         const target=items[Math.min(limit,items.length)-1];
-        const limitHeight=target?target.getBoundingClientRect().bottom-listRect.top+4:naturalHeight;
+        const limitHeight=target?itemBottom(target)+4:naturalHeight;
         const shouldScroll=el.id==='privateList'
           ? items.length>limit
           : items.length>limit;
