@@ -1741,6 +1741,10 @@ body{
   -webkit-overflow-scrolling:touch;
   padding-right:4px;
 }
+#privateList.long-list-scroll{
+  touch-action:pan-y;
+  overscroll-behavior-y:contain;
+}
 #queueList.long-list-scroll::-webkit-scrollbar,
 #privateList.long-list-scroll::-webkit-scrollbar{width:8px}
 @media(max-width:780px){
