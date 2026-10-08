@@ -456,7 +456,10 @@
         if(!items.length)return;
         const listRect=el.getBoundingClientRect();
         const scrollTop=el.scrollTop||0;
-        const itemBottom=item=>item.getBoundingClientRect().bottom-listRect.top+scrollTop;
+        const itemBottom=item=>{
+          if(el.id==='queueList')return item.offsetTop+item.offsetHeight;
+          return item.getBoundingClientRect().bottom-listRect.top+scrollTop;
+        };
         const naturalHeight=itemBottom(items[items.length-1])+4;
         const target=items[Math.min(limit,items.length)-1];
         const limitHeight=target?itemBottom(target)+4:naturalHeight;

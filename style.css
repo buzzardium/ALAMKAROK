@@ -1738,7 +1738,8 @@ body{
   min-height:0!important;
   overflow-y:auto!important;
   overflow-x:hidden!important;
-  overscroll-behavior:contain;
+  overscroll-behavior-y:auto;
+  overscroll-behavior-x:hidden;
   scrollbar-gutter:stable;
   -webkit-overflow-scrolling:touch;
   padding-right:4px;
@@ -1851,6 +1852,7 @@ body{
   overflow-y:scroll!important;
   overflow-x:hidden!important;
   overscroll-behavior-y:auto!important;
+  overscroll-behavior-x:hidden!important;
   scrollbar-gutter:stable;
   -webkit-overflow-scrolling:touch;
 }
