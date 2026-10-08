@@ -1706,3 +1706,24 @@ body{
   height:auto!important;
   overflow:visible!important;
 }
+
+/* LONG LIST UX — natural growth up to 50 videos, then internal scrolling */
+#queueList.long-list-scroll,
+#privateList.long-list-scroll{
+  max-height:var(--list-scroll-height)!important;
+  overflow-y:auto!important;
+  overflow-x:hidden!important;
+  overscroll-behavior:contain;
+  scrollbar-gutter:stable;
+  -webkit-overflow-scrolling:touch;
+  padding-right:4px;
+}
+#queueList.long-list-scroll::-webkit-scrollbar,
+#privateList.long-list-scroll::-webkit-scrollbar{width:8px}
+@media(max-width:780px){
+  #queueList.long-list-scroll,
+  #privateList.long-list-scroll{
+    scrollbar-width:thin;
+    overscroll-behavior-y:contain;
+  }
+}
