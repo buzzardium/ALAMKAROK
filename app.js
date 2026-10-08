@@ -450,6 +450,7 @@
       if(!el)return;
       el.classList.remove('long-list-scroll');
       el.style.removeProperty('--list-scroll-height');
+      el.style.removeProperty('height');
       requestAnimationFrame(()=>{
         const items=[...el.querySelectorAll('.qitem[data-drag-type]')].filter(item=>item.getBoundingClientRect().height>0);
         if(!items.length)return;
@@ -464,7 +465,9 @@
         const height=el.id==='privateList'
           ? Math.max(220,Math.min(limitHeight,window.innerHeight*0.65))
           : Math.max(220,limitHeight);
-        el.style.setProperty('--list-scroll-height',String(Math.ceil(height))+'px');
+        const scrollHeight=Math.ceil(height)+'px';
+        el.style.setProperty('--list-scroll-height',scrollHeight);
+        el.style.setProperty('height',scrollHeight);
         el.classList.add('long-list-scroll');
       });
     });
