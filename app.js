@@ -751,6 +751,7 @@
     document.getElementById('url').addEventListener('keydown',e=>{if(e.key==='Enter')addLink();});
     document.getElementById('privateUrl').addEventListener('keydown',e=>{if(e.key==='Enter')addPrivateInput();});
     document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>removeItem(b.dataset.del));document.querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>playQueueItem(b.dataset.play));document.querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.up,-1));document.querySelectorAll('[data-down]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.down,1));
+    document.querySelectorAll('#prev,#play,#next').forEach(b=>{b.addEventListener('pointerdown',()=>{b.classList.add('control-pressing');if(navigator.vibrate)try{navigator.vibrate(8);}catch(_){}},{passive:true});['pointerup','pointercancel','pointerleave'].forEach(ev=>b.addEventListener(ev,()=>b.classList.remove('control-pressing'),{passive:true}));});
     const qr=document.getElementById('qr'); if(window.QRCode){new QRCode(qr,{text:roomUrl(state.room.code),width:150,height:150});} else qr.innerHTML='<div class="small qrtext">QR library unavailable.<br>Use the link below.</div>';
     bindDragAndDrop(document);
   }
