@@ -1774,3 +1774,35 @@ body{
     touch-action:pan-y;
   }
 }
+
+/* MOBILE TOUCH SCROLL — swipe anywhere except explicit controls */
+@media(max-width:780px){
+  html,body{touch-action:pan-y!important;}
+  .main-section,
+  .main-section .collapsible-body,
+  .main-section .section-title,
+  .main-section .section-heading,
+  .main-section .section-divider-label,
+  .main-section .private-help,
+  .main-section .qitem,
+  .main-section .qitem .min0,
+  .main-section .qitem .qtitle,
+  .main-section .qitem .meta,
+  .main-section .qitem .thumb,
+  .playlist-subsection,
+  .playlist-subbody,
+  .playlist-subtitle,
+  .playlist-count{
+    touch-action:pan-y!important;
+  }
+  .main-section button,
+  .main-section input[type="checkbox"],
+  .main-section .move-btn,
+  .main-section .private-upload-btn,
+  .main-section .danger-sm{
+    touch-action:manipulation!important;
+  }
+  .main-section .drag-handle{
+    touch-action:none!important;
+  }
+}
