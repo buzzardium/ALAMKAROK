@@ -1044,6 +1044,10 @@
   }
   async function playQueueItem(id){
     const item=state.queue.find(x=>x.id===id);if(!item)return;
+    if(!state.isHost){
+      await broadcast('command',{from:state.me.id,action:'load',videoId:item.video_id});
+      return;
+    }
     if(item.video_id!==state.room?.current_video_id){
       await moveCurrentForInterruption();
       await refreshQueue();
