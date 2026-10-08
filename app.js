@@ -342,7 +342,8 @@
   function openGivePoints(recipientId){const existing=document.getElementById('givePointsPop');if(existing)existing.remove();const p=state.people.find(x=>x.id===recipientId);if(!p)return;const back=document.createElement('div');back.className='point-popover';back.innerHTML=`<div class="point-pop-card"><div class="small">Give points to <b>${esc(p.name)}</b></div><div class="point-options"><button class="btn" data-pts="1">+1 ⭐</button><button class="btn" data-pts="5">+5 ⭐</button><button class="btn primary" data-pts="10">+10 ⭐</button></div><button class="point-close">Cancel</button></div>`;back.id='givePointsPop';document.body.appendChild(back);back.querySelectorAll('[data-pts]').forEach(b=>b.onclick=()=>givePoints(recipientId,Number(b.dataset.pts)));back.querySelector('.point-close').onclick=()=>back.remove();back.onclick=e=>{if(e.target===back)back.remove();};}
   async function givePoints(recipientId,amount){const back=document.getElementById('givePointsPop');if(back)back.remove();if(recipientId===state.me.id)return;if(![1,5,10].includes(amount))return;const recipient=state.people.find(x=>x.id===recipientId);if(!recipient)return;try{const r=await getClient().rpc('give_points',{p_room_id:state.room.id,p_giver_id:state.me.id,p_recipient_id:recipientId,p_amount:amount});if(r.error)throw r.error;await refreshPeople();await broadcast('points',{people:state.people});notify(`Gave ${amount} point${amount===1?'':'s'} to ${recipient.name} ⭐`,'info');}catch(e){notify('Points need the chat/points database update first.','error');}}
   async function refreshQueue(){const r=await getClient().from('queue_items').select('*').eq('room_id',state.room.id).order('position',{ascending:true});if(!r.error){state.queue=r.data||[];updateRoomView();}}
-  async function refreshRoom(){const r=await getClient().from('rooms').select('*').eq('id',state.room.id).single();if(!r.error){state.room=r.data;state.queueVersion=Number(r.data.queue_version||0);updateRoomView();if(state.isHost&&state.room.current_video_id)ensureYouTubePlayer();}}
+  async function refreshRoom(){const r=await getClient().from('rooms').select('*').eq('id',state.room.id).single();if(!r.error){const wasHost=!!state.isHost;state.room=r.data;state.queueVersion=Number(r.data.queue_version||0);state.isHost=!!state.me&&state.me.user_id===state.room.host_id;updateRoomView();if(wasHost!==state.isHost){if(!state.isHost){try{if(state.player&&typeof state.player.stopVideo==='function')state.player.stopVideo();if(state.player&&typeof state.player.destroy==='function')state.player.destroy();}catch(_){}state.player=null;state.playerReady=false;}else if(state.room.current_video_id)loadYouTubeAPI();}else if(state.isHost&&state.room.current_video_id)ensureYouTubePlayer();saveRoomSession();}}
+
   async function broadcast(event,payload){if(state.channel) await state.channel.send({type:'broadcast',event,payload});}
 
   function renderRoom(){
@@ -684,29 +685,44 @@
     }finally{state.busy=false;}
   }
 
-  async function leaveRoom(){
-    const confirmed=window.confirm(`Leave room ${state.room?.code||''}?`);
-    if(!confirmed)return;
+  function closeHostHandoffModal(){const el=document.getElementById('hostHandoffModal');if(el)el.remove();}
+  async function completeHostHandoff(target){
+    if(state.leaving||!state.isHost||!state.room||!state.me||!target)return false;
     state.leaving=true;
-    if(state.reconnectTimer){clearTimeout(state.reconnectTimer);state.reconnectTimer=null;}
     try{
-      if(state.player&&typeof state.player.stopVideo==='function')state.player.stopVideo();
-      if(state.player&&typeof state.player.destroy==='function')state.player.destroy();
-    }catch(_){}
-    try{
-      if(state.channel){
-        const client=getClient();
-        await client.removeChannel(state.channel);
-      }
-    }catch(_){}
-    try{
+      const r=await getClient().from('rooms').update({host_id:target.user_id,updated_at:new Date().toISOString()}).eq('id',state.room.id).eq('host_id',state.me.user_id).select().single();
+      if(r.error||!r.data)throw r.error||new Error('The host changed before handoff completed.');
+      state.room=r.data;savePreviousRoom();
+      try{if(state.player&&typeof state.player.stopVideo==='function')state.player.stopVideo();if(state.player&&typeof state.player.destroy==='function')state.player.destroy();}catch(_){}
+      if(state.channel)try{await getClient().removeChannel(state.channel);}catch(_){}
       if(state.me?.id)await getClient().from('participants').delete().eq('id',state.me.id);
-    }catch(_){}
-    savePreviousRoom();
-    clearRoomSession();
-    state.room=null;state.me=null;state.people=[];state.queue=[];state.channel=null;state.player=null;state.playerReady=false;state.isHost=false;state.chatMessages=[];state.privateList=[];state.pendingSwitchSession=null;
-    renderHome();
-    notify('You left the room.','info');
+      clearRoomSession();closeHostHandoffModal();state.room=null;state.me=null;state.people=[];state.queue=[];state.channel=null;state.player=null;state.playerReady=false;state.isHost=false;state.chatMessages=[];state.privateList=[];state.pendingSwitchSession=null;state.leaving=false;renderHome();notify(target.name+' is now the host. You left the room.','info');return true;
+    }catch(e){state.leaving=false;notify(e.message||'Could not transfer host.','error');return false;}
+  }
+  function showHostHandoffModal(){
+    const others=(state.people||[]).filter(p=>p.id!==state.me?.id&&p.user_id);
+    if(!others.length)return leaveRoomNow();
+    const back=document.createElement('div');back.className='modalback';back.id='hostHandoffModal';
+    const peopleHtml=others.map(p=>`<button class="btn host-handoff-person" type="button" data-host-person="${esc(p.id)}"><span class="dot" style="background:${esc(p.color)}"></span>${esc(p.name)}</button>`).join('');
+    back.innerHTML=`<div class="modal host-handoff-modal"><div class="brand">ALAMKAROK</div><div class="small">Room ${esc(state.room.code)}</div><h2>Host Handoff</h2><p class="sub">Choose who should become the new host before you leave.</p><div class="modalactions"><button class="btn" id="hostRandom">🎲 Random Person</button><button class="btn primary" id="hostSelect">Select Person</button></div><div id="hostPersonPicker" class="host-person-picker" hidden><div class="small">Select the new host:</div><div class="host-person-list">${peopleHtml}</div></div><div class="modalactions"><button class="btn" id="hostHandoffCancel">Cancel</button></div></div>`;
+    document.body.appendChild(back);const picker=back.querySelector('#hostPersonPicker');
+    back.querySelector('#hostHandoffCancel').onclick=closeHostHandoffModal;
+    back.querySelector('#hostSelect').onclick=()=>{picker.hidden=!picker.hidden;};
+    back.querySelector('#hostRandom').onclick=()=>completeHostHandoff(others[Math.floor(Math.random()*others.length)]);
+    back.querySelectorAll('[data-host-person]').forEach(b=>b.onclick=()=>completeHostHandoff(others.find(p=>p.id===b.dataset.hostPerson)));
+  }
+  async function leaveRoomNow(){
+    state.leaving=true;if(state.reconnectTimer){clearTimeout(state.reconnectTimer);state.reconnectTimer=null;}
+    try{if(state.player&&typeof state.player.stopVideo==='function')state.player.stopVideo();if(state.player&&typeof state.player.destroy==='function')state.player.destroy();}catch(_){}
+    try{if(state.channel)await getClient().removeChannel(state.channel);}catch(_){}
+    try{if(state.me?.id)await getClient().from('participants').delete().eq('id',state.me.id);}catch(_){}
+    savePreviousRoom();clearRoomSession();state.room=null;state.me=null;state.people=[];state.queue=[];state.channel=null;state.player=null;state.playerReady=false;state.isHost=false;state.chatMessages=[];state.privateList=[];state.pendingSwitchSession=null;state.leaving=false;renderHome();notify('You left the room.','info');
+  }
+  async function leaveRoom(){
+    if(state.leaving||!state.room||!state.me)return;
+    if(!window.confirm(`Leave room ${state.room.code}?`))return;
+    if(state.isHost&&(state.people||[]).some(p=>p.id!==state.me.id)){showHostHandoffModal();return;}
+    await leaveRoomNow();
   }
 
   function bindRoomControls(){
@@ -998,3 +1014,119 @@
       if(raw!==null){const n=Number(raw);return Number.isFinite(n)&&n>=0?n:0;}
       // Migrate the old one-time-seen flag so existing users get the new 5-view behavior.
       const oldKey=`alamkarok-announcement-seen-${id}`;
+      if(localStorage.getItem(oldKey)!==null){localStorage.removeItem(oldKey);}
+    }catch(_){ }
+    return 0;
+  }
+  function recordAnnouncementView(id){
+    try{localStorage.setItem(announcementViewCountKey(id),String(announcementViewCount(id)+1));}catch(_){ }
+  }
+  async function getActiveAnnouncement(){
+    try{
+      const r=await getClient().from('announcements').select('*').eq('active',true).order('created_at',{ascending:false}).limit(20);
+      if(r.error)return null;
+      return (r.data||[]).find(announcementIsCurrent)||null;
+    }catch(_){return null;}
+  }
+  function closeAnnouncement(id){
+    const el=document.getElementById('announcementOverlay');
+    if(el)el.remove();
+  }
+  function showAnnouncement(a){
+    if(!a||document.getElementById('announcementOverlay'))return;
+    // Show once per page visit, up to 5 visits for each announcement on this browser/device.
+    if(announcementViewCount(a.id)>=5)return;
+    recordAnnouncementView(a.id);
+    const back=document.createElement('div');
+    back.className='announcement-overlay';
+    back.id='announcementOverlay';
+    const image=a.image_url?`<div class="announcement-image-wrap"><img class="announcement-image" src="${esc(a.image_url)}" alt=""></div>`:'';
+    const button=a.button_text&&a.button_url?`<a class="btn primary announcement-button" href="${esc(a.button_url)}" target="_blank" rel="noopener noreferrer">${esc(a.button_text)}</a>`:'';
+    back.innerHTML=`<div class="announcement-modal" role="dialog" aria-modal="true" aria-labelledby="announcementTitle"><button class="announcement-close" id="announcementClose" type="button" aria-label="Close announcement">×</button>${image}<div class="announcement-content"><div class="announcement-kicker">📢 ANNOUNCEMENT</div><h2 id="announcementTitle">${esc(a.title||'Announcement')}</h2>${a.message?`<div class="announcement-message">${esc(a.message).replace(/\n/g,'<br>')}</div>`:''}${button}</div></div>`;
+    document.body.appendChild(back);
+    back.querySelector('#announcementClose').onclick=()=>closeAnnouncement(a.id);
+    back.addEventListener('click',e=>{if(e.target===back)closeAnnouncement(a.id);});
+    const onKey=e=>{if(e.key==='Escape'){closeAnnouncement(a.id);document.removeEventListener('keydown',onKey);}};
+    document.addEventListener('keydown',onKey);
+  }
+  async function loadAnnouncement(){
+    if(location.pathname.replace(/\/+$/, '')==='/admin')return;
+    const a=await getActiveAnnouncement();
+    if(a)showAnnouncement(a);
+  }
+
+  function adminStyles(){return `
+    <style id="adminInlineStyles">
+      .admin-wrap{width:min(980px,100%);padding:20px}.admin-top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:18px}.admin-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(280px,.9fr);gap:16px}.admin-card{padding:18px}.admin-card h1,.admin-card h2{margin:0 0 8px}.admin-form{display:grid;gap:12px}.admin-label{display:grid;gap:6px;font-size:12px;color:#94a2b5;font-weight:700;text-transform:uppercase;letter-spacing:.06em}.admin-textarea{min-height:140px;resize:vertical}.admin-check{display:flex;align-items:center;gap:8px;color:#cbd5e1;font-size:14px}.admin-dates{display:grid;grid-template-columns:1fr 1fr;gap:10px}.admin-actions{display:flex;gap:8px;flex-wrap:wrap}.admin-list{display:grid;gap:10px;margin-top:14px}.admin-item{padding:13px;border:1px solid #243246;background:#0b111a;border-radius:12px}.admin-item-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.admin-item-title{font-weight:750;color:#eef3f9}.admin-item-meta{font-size:11px;color:#718096;margin-top:4px}.admin-item-preview{max-height:110px;max-width:100%;object-fit:cover;border-radius:8px;margin-top:10px}.admin-badge{font-size:11px;padding:4px 7px;border-radius:999px;border:1px solid #294337;color:#78ddb5;background:#10251f}.admin-badge.off{border-color:#47313a;color:#ef9cae;background:#26161c}.admin-empty{color:#718096;font-size:13px;padding:14px 0}.admin-error{color:#ff9cab;background:#28161d;border:1px solid #57303a;padding:10px;border-radius:10px;font-size:13px}.admin-success{color:#75dfb8;background:#10251f;border:1px solid #285342;padding:10px;border-radius:10px;font-size:13px}.admin-login{max-width:430px;margin:8vh auto}.admin-preview{position:relative}.admin-preview .announcement-modal{position:relative;inset:auto;transform:none;margin:0;max-height:none}.admin-preview .announcement-overlay{position:relative;inset:auto;background:none;padding:0}.admin-file{font-size:12px;color:#8290a4}
+      @media(max-width:760px){.admin-grid{grid-template-columns:1fr}.admin-dates{grid-template-columns:1fr}.admin-wrap{padding:14px}.admin-top{align-items:flex-start}.admin-top .btn{white-space:nowrap}}
+    </style>`;}
+  async function adminIsAdmin(){
+    const {data:{session}}=await getClient().auth.getSession();
+    if(!session)return false;
+    const r=await getClient().from('admin_users').select('user_id').eq('user_id',session.user.id).maybeSingle();
+    return !r.error&&!!r.data;
+  }
+  async function renderAdmin(){
+    app.innerHTML=adminStyles()+`<div class="admin-wrap"><div class="admin-top"><div><div class="brand">ALAMKAROK</div><div class="small">Announcement Manager</div></div><button class="btn" id="adminBack">Back to ALAMKAROK</button></div><div id="adminArea"></div></div>`;
+    document.getElementById('adminBack').onclick=()=>{location.href='/';};
+    const area=document.getElementById('adminArea');
+    const {data:{session}}=await getClient().auth.getSession();
+    if(!session){renderAdminLogin(area);return;}
+    if(!(await adminIsAdmin())){area.innerHTML=`<div class="card admin-card"><h1>Access not enabled</h1><p class="sub">This account is signed in, but it is not listed as an ALAMKAROK administrator.</p><button class="btn" id="adminSignOut">Sign out</button></div>`;document.getElementById('adminSignOut').onclick=async()=>{await getClient().auth.signOut();renderAdmin();};return;}
+    renderAdminDashboard(area,session.user);
+  }
+  function renderAdminLogin(area){
+    area.innerHTML=`<div class="card admin-card admin-login"><h1>Admin Login</h1><p class="sub">Sign in to publish ALAMKAROK announcements.</p><div id="adminMsg"></div><form class="admin-form" id="adminLoginForm"><label class="admin-label">Email<input class="input" id="adminEmail" type="email" autocomplete="username" required></label><label class="admin-label">Password<input class="input" id="adminPassword" type="password" autocomplete="current-password" required></label><button class="btn primary" type="submit">Sign In</button></form></div>`;
+    area.querySelector('#adminLoginForm').onsubmit=async e=>{e.preventDefault();const msg=area.querySelector('#adminMsg');msg.innerHTML='';const r=await getClient().auth.signInWithPassword({email:area.querySelector('#adminEmail').value.trim(),password:area.querySelector('#adminPassword').value});if(r.error){msg.innerHTML=`<div class="admin-error">${esc(r.error.message)}</div>`;return;}renderAdmin();};
+  }
+  async function adminAnnouncements(){const r=await getClient().from('announcements').select('*').order('created_at',{ascending:false});return r.error?[]:(r.data||[]);}
+  function adminFormHtml(edit){
+    const a=edit||{};
+    const iso=v=>v?new Date(v).toISOString().slice(0,16):'';
+    return `<form class="admin-form" id="announcementForm"><input type="hidden" id="annId" value="${esc(a.id||'')}"><label class="admin-label">Title<input class="input" id="annTitle" maxlength="120" value="${esc(a.title||'')}" placeholder="🎉 New Feature Available!" required></label><label class="admin-label">Message<textarea class="input admin-textarea" id="annMessage" maxlength="4000" placeholder="Write your announcement...">${esc(a.message||'')}</textarea></label><label class="admin-label">Image <span class="admin-file">optional</span><input class="input" id="annImage" type="file" accept="image/png,image/jpeg,image/webp,image/gif"><input class="input" id="annImageUrl" type="url" value="${esc(a.image_url||'')}" placeholder="Or paste an image URL"><span class="admin-file">${a.image_url?'Current image is set. Uploading a new image replaces it.':''}</span></label><label class="admin-label">Button text <span class="admin-file">optional</span><input class="input" id="annButtonText" maxlength="50" value="${esc(a.button_text||'')}" placeholder="Learn More"></label><label class="admin-label">Button link <span class="admin-file">optional</span><input class="input" id="annButtonUrl" type="url" value="${esc(a.button_url||'')}" placeholder="https://..."></label><div class="admin-dates"><label class="admin-label">Start <input class="input" id="annStart" type="datetime-local" value="${iso(a.starts_at)}"></label><label class="admin-label">Expiry <input class="input" id="annExpiry" type="datetime-local" value="${iso(a.expires_at)}"></label></div><label class="admin-check"><input id="annActive" type="checkbox" ${a.active!==false?'checked':''}> Active</label><div class="admin-actions"><button class="btn primary" type="submit">${a.id?'Update':'Publish'}</button>${a.id?'<button class="btn" type="button" id="annCancel">Cancel Edit</button>':''}</div></form>`;
+  }
+  async function uploadAnnouncementImage(file){
+    if(!file)return null;
+    const ext=(file.name.split('.').pop()||'jpg').toLowerCase().replace(/[^a-z0-9]/g,'')||'jpg';
+    const path=`${crypto.randomUUID()}.${ext}`;
+    const r=await getClient().storage.from('announcement-images').upload(path,file,{upsert:false,contentType:file.type||undefined});
+    if(r.error)throw r.error;
+    return getClient().storage.from('announcement-images').getPublicUrl(path).data.publicUrl;
+  }
+  async function renderAdminDashboard(area,user){
+    let editing=null;
+    const draw=async()=>{
+      const rows=await adminAnnouncements();
+      area.innerHTML=`<div class="admin-grid"><section class="card admin-card"><div class="admin-top"><div><h1>${editing?'Edit Announcement':'New Announcement'}</h1><div class="small">${esc(user.email||'')}</div></div></div><div id="adminFormMsg"></div>${adminFormHtml(editing)}</section><section class="card admin-card"><h2>Published Announcements</h2><div class="small">Active announcements appear to visitors once, until they close them.</div><div class="admin-list">${rows.length?rows.map(a=>{const current=announcementIsCurrent(a);return `<div class="admin-item"><div class="admin-item-head"><div><div class="admin-item-title">${esc(a.title||'Untitled')}</div><div class="admin-item-meta">${a.expires_at?'Expires '+new Date(a.expires_at).toLocaleString():'No expiry'}</div></div><span class="admin-badge ${current?'':'off'}">${current?'ACTIVE':'INACTIVE'}</span></div>${a.message?`<div class="admin-item-meta">${esc(a.message).slice(0,180)}</div>`:''}${a.image_url?`<img class="admin-item-preview" src="${esc(a.image_url)}" alt="">`:''}<div class="admin-actions" style="margin-top:10px"><button class="btn" data-edit="${esc(a.id)}">Edit</button><button class="btn" data-toggle="${esc(a.id)}">${a.active?'Disable':'Enable'}</button><button class="btn" data-delete="${esc(a.id)}">Delete</button></div></div>`}).join(''):'<div class="admin-empty">No announcements yet.</div>'}</div></section></div>`;
+      const form=area.querySelector('#announcementForm');
+      form.onsubmit=async e=>{e.preventDefault();const msg=area.querySelector('#adminFormMsg');msg.innerHTML='';try{let imageUrl=area.querySelector('#annImageUrl').value.trim()||null;const file=area.querySelector('#annImage').files?.[0];if(file)imageUrl=await uploadAnnouncementImage(file);const payload={title:area.querySelector('#annTitle').value.trim(),message:area.querySelector('#annMessage').value, image_url:imageUrl,button_text:area.querySelector('#annButtonText').value.trim()||null,button_url:area.querySelector('#annButtonUrl').value.trim()||null,active:area.querySelector('#annActive').checked,starts_at:area.querySelector('#annStart').value?new Date(area.querySelector('#annStart').value).toISOString():new Date().toISOString(),expires_at:area.querySelector('#annExpiry').value?new Date(area.querySelector('#annExpiry').value).toISOString():null};if(!payload.title)throw new Error('Title is required.');let r;if(editing)r=await getClient().from('announcements').update(payload).eq('id',editing.id);else r=await getClient().from('announcements').insert(payload);if(r.error)throw r.error;editing=null;await draw();}catch(e){msg.innerHTML=`<div class="admin-error">${esc(e.message||String(e))}</div>`;}};
+      area.querySelectorAll('[data-edit]').forEach(b=>b.onclick=async()=>{const rows2=await adminAnnouncements();editing=rows2.find(x=>x.id===b.dataset.edit)||null;await draw();});
+      area.querySelectorAll('[data-toggle]').forEach(b=>b.onclick=async()=>{const rows2=await adminAnnouncements();const a=rows2.find(x=>x.id===b.dataset.toggle);if(!a)return;await getClient().from('announcements').update({active:!a.active}).eq('id',a.id);await draw();});
+      area.querySelectorAll('[data-delete]').forEach(b=>b.onclick=async()=>{if(!confirm('Delete this announcement?'))return;await getClient().from('announcements').delete().eq('id',b.dataset.delete);await draw();});
+      const cancel=area.querySelector('#annCancel');if(cancel)cancel.onclick=()=>{editing=null;draw();};
+    };
+    await draw();
+  }
+
+  window.addEventListener('error',e=>{if(!document.getElementById('app'))return;console.error(e.error||e.message);});
+  window.addEventListener('unhandledrejection',e=>{console.error(e.reason);});
+
+  (async()=>{
+    if(!validConfig() || !window.supabase){renderHome();return;}
+    try{
+      getClient();
+      const params=new URLSearchParams(location.search);
+      if(location.pathname.replace(/\/+$/, '')==='/admin' || params.get('admin')==='1') await renderAdmin();
+      else {
+        const code=params.get('room')?.toUpperCase()||null;
+        const saved=readRoomSession();
+        if(saved){
+          if(code && code!==saved.roomCode) showExistingRoomPrompt(saved,code);
+          else { try{ await restoreRoomSession(saved); }catch(e){ clearRoomSession(); if(code) await joinRoom(code); else renderHome(); } }
+        }else if(code) await joinRoom(code);
+        else loadPersonalPlaylists();
+  renderHome();
+      }
+    }catch(e){errorScreen('ALAMKAROK could not start',e.message||'Unknown startup error','Check config.js and make sure the Supabase URL and publishable key are correct.');}
+  })();
+})();
