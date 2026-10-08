@@ -1644,11 +1644,12 @@ body{
   }
   .qitem[data-drag-type="shared"] .actions,
   .qitem.private-item .actions{
-    grid-column:4!important;
+    grid-column:3 / -1!important;
     grid-row:2!important;
-    justify-self:start!important;
+    justify-self:stretch!important;
     width:100%!important;
     display:flex!important;
+    justify-content:flex-end!important;
     flex-wrap:nowrap!important;
     gap:6px!important;
     margin-top:1px!important;
