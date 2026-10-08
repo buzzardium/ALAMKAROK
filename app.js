@@ -110,9 +110,11 @@
   function savePrivateList(){ try{ const k=privateKey(); if(k)localStorage.setItem(k,JSON.stringify({items:state.privateList,privateCollapsed:state.privateCollapsed,sharedCollapsed:state.sharedCollapsed,playlistCollapsed:state.playlistCollapsed})); }catch(_){} }
   function bindMobilePinchCollapse(){
     if(!window.matchMedia || !window.matchMedia('(max-width:780px)').matches)return;
-    [['privateBody','private'],['sharedBody','shared']].forEach(([id,which])=>{
-      const el=document.getElementById(id);
-      if(!el||el.dataset.pinchCollapseBound==='1')return;
+    document.querySelectorAll('.playlist-subbody').forEach(el=>{
+      if(el.dataset.pinchCollapseBound==='1')return;
+      const header=el.closest('.playlist-subsection')?.querySelector('[data-playlist-toggle]');
+      const playlistId=header?.dataset.playlistToggle;
+      if(!playlistId)return;
       el.dataset.pinchCollapseBound='1';
       let startDistance=0,armed=false;
       const distance=e=>{
@@ -130,8 +132,7 @@
         if(d>0&&startDistance-d>=45){
           armed=false;
           e.preventDefault();
-          if(which==='private'&&!state.privateCollapsed)toggleListSection('private');
-          if(which==='shared'&&!state.sharedCollapsed)toggleListSection('shared');
+          if(!state.playlistCollapsed[playlistId])togglePlaylistGroup(playlistId);
         }
       },{passive:false});
       el.addEventListener('touchend',()=>{startDistance=0;armed=false;},{passive:true});
