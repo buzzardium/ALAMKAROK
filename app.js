@@ -746,7 +746,7 @@
       if(!seen.has(key)){ const g={key,playlistId:x.playlist_id||null,title:x.playlist_title||'Individual Videos',items:[]}; seen.set(key,g);groups.push(g); }
       seen.get(key).items.push({x,i});
     });
-    const itemHtml=({x,i})=>`<div class="qitem private-item" draggable="false" data-drag-type="private" data-drag-id="${esc(x.id)}"><input class="private-check" type="checkbox" data-private-check="${esc(x.id)}" ${x.selected?'checked':''} aria-label="Select ${esc(x.title)}"><div class="qnum drag-handle" title="Drag to reorder">⠿<span>${i+1}</span></div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.playlist_id?'Playlist · ':''}Private · not uploaded</div></div><div class="actions queue-actions"><button class="action-sm move-btn" data-private-up="${esc(x.id)}" ${i===0?'disabled':''}>↑</button><button class="action-sm move-btn" data-private-down="${esc(x.id)}" ${i===state.privateList.length-1?'disabled':''}>↓</button><button class="action-sm danger-sm" data-private-del="${esc(x.id)}">×</button></div></div>`;
+    const itemHtml=({x,i})=>`<div class="qitem private-item" draggable="false" data-drag-type="private" data-drag-id="${esc(x.id)}"><input class="private-check" type="checkbox" data-private-check="${esc(x.id)}" ${x.selected?'checked':''} aria-label="Select ${esc(x.title)}"><div class="qnum drag-handle" title="Drag to reorder">⠿<span>${i+1}</span></div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.playlist_id?'Playlist · ':''}Private · not uploaded</div></div><div class="actions queue-actions"><button class="action-sm private-upload-btn" data-private-upload="${esc(x.id)}" title="Upload this video to Shared Queue" aria-label="Upload this video">↑</button><button class="action-sm move-btn" data-private-up="${esc(x.id)}" ${i===0?'disabled':''}>↑</button><button class="action-sm move-btn" data-private-down="${esc(x.id)}" ${i===state.privateList.length-1?'disabled':''}>↓</button><button class="action-sm danger-sm" data-private-del="${esc(x.id)}">×</button></div></div>`;
     list.innerHTML=groups.map(g=>{
       if(!g.playlistId) return g.items.map(itemHtml).join('');
       const collapsed=!!state.playlistCollapsed[g.playlistId];
@@ -754,13 +754,22 @@
     }).join('');
     list.querySelectorAll('[data-playlist-toggle]').forEach(b=>b.onclick=()=>togglePlaylistGroup(b.dataset.playlistToggle));
     list.querySelectorAll('[data-private-check]').forEach(b=>b.onchange=()=>{const x=state.privateList.find(x=>x.id===b.dataset.privateCheck);if(x){x.selected=b.checked;savePrivateList();}});
+    list.querySelectorAll('[data-private-upload]').forEach(b=>b.onclick=()=>uploadPrivateOne(b.dataset.privateUpload));
     list.querySelectorAll('[data-private-up]').forEach(b=>b.onclick=()=>movePrivate(b.dataset.privateUp,-1));
     list.querySelectorAll('[data-private-down]').forEach(b=>b.onclick=()=>movePrivate(b.dataset.privateDown,1));
     list.querySelectorAll('[data-private-del]').forEach(b=>b.onclick=()=>deletePrivate(b.dataset.privateDel));
     bindDragAndDrop(document);
   }
   function selectAllPrivate(){ const all=state.privateList.length>0 && state.privateList.every(x=>x.selected); state.privateList.forEach(x=>x.selected=!all); savePrivateList(); renderPrivateList(); }
-  function movePrivate(id,direction){ const i=state.privateList.findIndex(x=>x.id===id), j=i+direction; if(i<0||j<0||j>=state.privateList.length)return; [state.privateList[i],state.privateList[j]]=[state.privateList[j],state.privateList[i]]; savePrivateList();renderPrivateList(); }
+  function movePrivate(id,direction){
+    const i=state.privateList.findIndex(x=>x.id===id), j=i+direction;
+    if(i<0||j<0||j>=state.privateList.length)return;
+    const list=document.getElementById('privateList'),before=captureDragRects(list);
+    [state.privateList[i],state.privateList[j]]=[state.privateList[j],state.privateList[i]];
+    savePrivateList();renderPrivateList();
+    requestAnimationFrame(()=>animateListReorder(document.getElementById('privateList'),before));
+  }
+  async function uploadPrivateOne(id){const item=state.privateList.find(x=>x.id===id);if(!item)return;await uploadPrivateItems([item]);}
   function deletePrivate(id){ state.privateList=state.privateList.filter(x=>x.id!==id);savePrivateList();renderPrivateList(); }
   async function addPrivateInput(){
     if(state.privateBusy)return;
@@ -856,7 +865,22 @@
       notify('Queue finished');
     }
   }
-  async function sendCommand(action){await broadcast('command',{from:state.me.id,action});if(state.isHost)await handleCommandBroadcast({from:state.me.id,action});}
+  function pulsePlaybackControl(id){const btn=document.getElementById(id);if(!btn)return;btn.classList.remove('command-pulse');void btn.offsetWidth;btn.classList.add('command-pulse');setTimeout(()=>btn.classList.remove('command-pulse'),180);}
+  async function sendCommand(action){
+    if(!state.room||!state.me)return;
+    pulsePlaybackControl(action==='play'||action==='pause'?'play':action==='previous'?'prev':'next');
+    if(action==='play'||action==='pause'){state.room.is_playing=action==='play';state.room.position_seconds=currentTime();}
+    else if(action==='next'||action==='previous'){
+      const idx=Number.isInteger(state.room.current_index)?state.room.current_index:state.queue.findIndex(x=>x.video_id===state.room.current_video_id);
+      const targetIdx=action==='next'?Math.min(state.queue.length-1,idx+1):Math.max(0,idx-1);
+      const target=state.queue[targetIdx];
+      if(target){state.room.current_index=targetIdx;state.room.current_video_id=target.video_id;state.room.position_seconds=0;state.room.is_playing=true;}
+    }
+    updateRoomView();
+    const payload={from:state.me.id,action};
+    broadcast('command',payload).catch(()=>{});
+    if(state.isHost)await handleCommandBroadcast(payload);
+  }
   async function handleCommandBroadcast(payload){
     if(!payload||payload.from===state.me.id && !state.isHost)return;
     if(!state.isHost)return;
