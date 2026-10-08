@@ -1729,5 +1729,12 @@ body{
 }
 
 @media(max-width:780px){
-  .playlist-subbody{touch-action:pan-y}
+  .playlist-subbody{
+    touch-action:pan-y;
+    overscroll-behavior-y:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+  .playlist-subbody .qitem{
+    touch-action:pan-y;
+  }
 }
