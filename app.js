@@ -1023,15 +1023,36 @@
   async function playQueueItem(id){const item=state.queue.find(x=>x.id===id);if(!item)return;await performPlayback('load',item.video_id,0,true);}
   async function advanceAfterEnd(){
     if(!state.isHost)return;
+
+    // A played item is consumed only from the Shared Queue.
+    // My List is private/local and is never modified here.
     const idx=Number.isInteger(state.room.current_index)?state.room.current_index:state.queue.findIndex(x=>x.video_id===state.room.current_video_id);
-    const next=state.queue[idx+1];
-    if(next){ await performPlayback('load',next.video_id,0,true,true); notify('Autoplay: next video'); }
-    else {
-      const patch={is_playing:false,position_seconds:0,updated_at:new Date().toISOString()};
+    const played=idx>=0?state.queue[idx]:null;
+    if(played){
+      const r=await getClient().from('queue_items').delete().eq('id',played.id);
+      if(r.error){
+        notify(r.error.message||'Could not remove the played video from the shared queue','error');
+        return;
+      }
+      await refreshQueue();
+      await normalizePositions();
+      await refreshQueue();
+      await broadcast('queue',{queue:state.queue});
+    }
+
+    // After consuming the current item, the next item now occupies the same index.
+    const nextIndex=Math.max(0,idx);
+    const next=state.queue[nextIndex];
+    if(next){
+      await performPlayback('load',next.video_id,0,true,true);
+      notify('Autoplay: next video');
+    }else{
+      const patch={current_video_id:null,current_index:0,is_playing:false,position_seconds:0,updated_at:new Date().toISOString()};
       const r=await getClient().from('rooms').update(patch).eq('id',state.room.id).select().single();
       if(!r.error)state.room=r.data;
       updateRoomView();
       await broadcast('room',patch);
+      if(state.player){try{state.player.stopVideo();}catch(_){}}
       notify('Queue finished');
     }
   }
