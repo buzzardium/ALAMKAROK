@@ -1727,3 +1727,7 @@ body{
     overscroll-behavior-y:contain;
   }
 }
+
+@media(max-width:780px){
+  #privateBody,#sharedBody{touch-action:pan-y}
+}

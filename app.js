@@ -108,6 +108,36 @@
   function privateKey(){ return state.room&&state.me ? `alamkarok-private-v2-${state.room.code}-${state.me.user_id||state.me.id}` : null; }
   function loadPrivateList(){ state.privateList=[]; state.privateCollapsed=false; state.sharedCollapsed=false; state.playlistCollapsed={}; try{ const k=privateKey(); if(!k)return; const raw=localStorage.getItem(k); const parsed=raw?JSON.parse(raw):[]; if(Array.isArray(parsed)) state.privateList=parsed.filter(x=>x&&x.video_id); else if(parsed&&typeof parsed==='object'){ state.privateList=Array.isArray(parsed.items)?parsed.items.filter(x=>x&&x.video_id):[]; state.privateCollapsed=!!parsed.privateCollapsed; state.sharedCollapsed=!!parsed.sharedCollapsed; state.playlistCollapsed=(parsed.playlistCollapsed&&typeof parsed.playlistCollapsed==='object')?parsed.playlistCollapsed:{}; } }catch(_){state.privateList=[];} }
   function savePrivateList(){ try{ const k=privateKey(); if(k)localStorage.setItem(k,JSON.stringify({items:state.privateList,privateCollapsed:state.privateCollapsed,sharedCollapsed:state.sharedCollapsed,playlistCollapsed:state.playlistCollapsed})); }catch(_){} }
+  function bindMobilePinchCollapse(){
+    if(!window.matchMedia || !window.matchMedia('(max-width:780px)').matches)return;
+    [['privateBody','private'],['sharedBody','shared']].forEach(([id,which])=>{
+      const el=document.getElementById(id);
+      if(!el||el.dataset.pinchCollapseBound==='1')return;
+      el.dataset.pinchCollapseBound='1';
+      let startDistance=0,armed=false;
+      const distance=e=>{
+        if(!e.touches||e.touches.length<2)return 0;
+        const dx=e.touches[0].clientX-e.touches[1].clientX;
+        const dy=e.touches[0].clientY-e.touches[1].clientY;
+        return Math.hypot(dx,dy);
+      };
+      el.addEventListener('touchstart',e=>{
+        if(e.touches.length===2){startDistance=distance(e);armed=startDistance>0;}
+      },{passive:true});
+      el.addEventListener('touchmove',e=>{
+        if(!armed||e.touches.length<2)return;
+        const d=distance(e);
+        if(d>0&&startDistance-d>=45){
+          armed=false;
+          e.preventDefault();
+          if(which==='private'&&!state.privateCollapsed)toggleListSection('private');
+          if(which==='shared'&&!state.sharedCollapsed)toggleListSection('shared');
+        }
+      },{passive:false});
+      el.addEventListener('touchend',()=>{startDistance=0;armed=false;},{passive:true});
+      el.addEventListener('touchcancel',()=>{startDistance=0;armed=false;},{passive:true});
+    });
+  }
   function toggleListSection(which){ if(which==='private') state.privateCollapsed=!state.privateCollapsed; else state.sharedCollapsed=!state.sharedCollapsed; savePrivateList(); updateListSectionUI(); }
   function updateListSectionUI(){ const p=document.getElementById('privateBody'), q=document.getElementById('sharedBody'); if(p){p.classList.toggle('collapsed',state.privateCollapsed); p.setAttribute('aria-hidden',state.privateCollapsed?'true':'false');} if(q){q.classList.toggle('collapsed',state.sharedCollapsed); q.setAttribute('aria-hidden',state.sharedCollapsed?'true':'false');} document.querySelectorAll('[data-collapse]').forEach(b=>{const c=b.dataset.collapse==='private'?state.privateCollapsed:state.sharedCollapsed;const chev=b.querySelector('.chevron');if(chev)chev.textContent=c?'▼':'▲';b.setAttribute('aria-expanded',c?'false':'true');}); }
   function togglePlaylistGroup(id){ state.playlistCollapsed[id]=!state.playlistCollapsed[id]; savePrivateList(); renderPrivateList(); }
@@ -417,6 +447,7 @@
     updateEndPreview();
     renderPrivateList();
     updateVideoListScrollState();
+    bindMobilePinchCollapse();
     updatePeopleUI();
     if(state.isHost&&current)ensureYouTubePlayer();
   }
@@ -849,6 +880,7 @@
     list.querySelectorAll('[data-private-del]').forEach(b=>b.onclick=()=>deletePrivate(b.dataset.privateDel));
     bindDragAndDrop(document);
     updateVideoListScrollState();
+    bindMobilePinchCollapse();
   }
   function selectAllPrivate(){ const all=state.privateList.length>0 && state.privateList.every(x=>x.selected); state.privateList.forEach(x=>x.selected=!all); savePrivateList(); renderPrivateList(); }
   function movePrivate(id,direction){
