@@ -443,19 +443,20 @@
 
   function updateVideoListScrollState(){
     const lists=[
-      document.getElementById('queueList'),
-      document.getElementById('privateList')
+      {el:document.getElementById('queueList'),limit:50},
+      {el:document.getElementById('privateList'),limit:20}
     ];
-    lists.forEach(el=>{
+    lists.forEach(({el,limit})=>{
       if(!el)return;
       el.classList.remove('long-list-scroll');
       el.style.removeProperty('--list-scroll-height');
       requestAnimationFrame(()=>{
         const items=[...el.querySelectorAll('.qitem[data-drag-type]')].filter(item=>item.getBoundingClientRect().height>0);
-        if(items.length<=50)return;
+        if(items.length<=limit)return;
         const listRect=el.getBoundingClientRect();
-        const last=items[49].getBoundingClientRect();
-        const height=Math.max(220,last.bottom-listRect.top+4);
+        const target=items[limit-1];
+        if(!target)return;
+        const height=Math.max(220,target.getBoundingClientRect().bottom-listRect.top+4);
         el.style.setProperty('--list-scroll-height',String(Math.ceil(height))+'px');
         el.classList.add('long-list-scroll');
       });
