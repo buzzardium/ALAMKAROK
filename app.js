@@ -586,8 +586,15 @@
       const old=beforeRects.get(el.dataset.dragId);if(!old)return;
       const now=el.getBoundingClientRect();const dx=old.left-now.left,dy=old.top-now.top;
       if(Math.abs(dx)<1&&Math.abs(dy)<1)return;
-      el.style.transition='none';el.style.transform=`translate3d(${dx}px,${dy}px,0)`;el.getBoundingClientRect();
-      requestAnimationFrame(()=>{el.style.transition='transform 300ms cubic-bezier(.2,.8,.2,1)';el.style.transform='translate3d(0,0,0)';});
+      el.style.transition='none';
+      el.style.transform=`translate3d(${dx}px,${dy}px,0)`;
+      el.getBoundingClientRect();
+      requestAnimationFrame(()=>{
+        requestAnimationFrame(()=>{
+          el.style.transition='transform 240ms cubic-bezier(.2,.8,.2,1)';
+          el.style.transform='translate3d(0,0,0)';
+        });
+      });
       const done=()=>{el.style.transition='';el.style.transform='';el.removeEventListener('transitionend',done);};
       el.addEventListener('transitionend',done);
     });
@@ -603,23 +610,25 @@
     const [item]=state.privateList.splice(from,1);state.privateList.splice(to,0,item);savePrivateList();renderPrivateList();
     animateListReorder(document.getElementById('privateList'),before);
   }
-  async function reorderSharedQueue(fromId,toId){
+  async function reorderSharedQueue(fromId,toId,options={}){
     if(state.busy)return false;
     if(!fromId||!toId||fromId===toId)return false;
-    const beforeRects=captureDragRects(document.getElementById('queueList'));
-    const previousQueue=state.queue.slice();
+    const beforeRects=options.beforeRects||captureDragRects(document.getElementById('queueList'));
+    const previousQueue=options.previousQueue||state.queue.slice();
     const previousIndex=Number.isInteger(state.room.current_index)?state.room.current_index:0;
     const from=state.queue.findIndex(x=>x.id===fromId);
     const to=state.queue.findIndex(x=>x.id===toId);
     if(from<0||to<0)return false;
-    const optimistic=state.queue.slice();
-    const [moved]=optimistic.splice(from,1);
-    optimistic.splice(to,0,moved);
-    state.queue=optimistic;
+    if(!options.optimisticApplied){
+      const optimistic=state.queue.slice();
+      const [moved]=optimistic.splice(from,1);
+      optimistic.splice(to,0,moved);
+      state.queue=optimistic;
+    }
     const currentIndex=state.room.current_video_id?state.queue.findIndex(x=>x.video_id===state.room.current_video_id):-1;
     state.room.current_index=currentIndex>=0?currentIndex:0;
     updateRoomView();
-    requestAnimationFrame(()=>animateListReorder(document.getElementById('queueList'),beforeRects));
+    requestAnimationFrame(()=>requestAnimationFrame(()=>animateListReorder(document.getElementById('queueList'),beforeRects)));
     state.busy=true;
     try{
       const r=await getClient().rpc('reorder_queue_item',{
@@ -664,11 +673,11 @@
     const targetIndex=index+direction;
     if(index<0||targetIndex<0||targetIndex>=state.queue.length)return;
     const targetId=state.queue[targetIndex].id;
-    const list=document.getElementById('queueList'),before=captureDragRects(list);
+    const list=document.getElementById('queueList');
+    const before=captureDragRects(list);
+    const previousQueue=state.queue.slice();
     [state.queue[index],state.queue[targetIndex]]=[state.queue[targetIndex],state.queue[index]];
-    updateRoomView();
-    requestAnimationFrame(()=>requestAnimationFrame(()=>animateListReorder(document.getElementById('queueList'),before)));
-    await reorderSharedQueue(id,targetId);
+    await reorderSharedQueue(id,targetId,{beforeRects:before,previousQueue,optimisticApplied:true});
   }
 
   async function shuffleQueue(){
@@ -719,10 +728,14 @@
       clearRoomSession();closeHostHandoffModal();state.room=null;state.me=null;state.people=[];state.queue=[];state.channel=null;state.player=null;state.playerReady=false;state.isHost=false;state.chatMessages=[];state.privateList=[];state.pendingSwitchSession=null;state.leaving=false;renderHome();notify(target.name+' is now the host. You left the room.','info');return true;
     }catch(e){state.leaving=false;notify(e.message||'Could not transfer host.','error');return false;}
   }
-  function showHostHandoffModal(){
+  async function showHostHandoffModal(){
     const others=(state.people||[]).filter(p=>p.id!==state.me?.id&&p.user_id);
     if(!others.length)return leaveRoomNow();
-    const back=document.createElement('div');back.className='modalback';back.id='hostHandoffModal';
+    // A fullscreen player is in the browser's top layer and can sit above normal body overlays.
+    // Exit fullscreen before creating the handoff modal so the dialog is always visible.
+    if(document.fullscreenElement)try{await document.exitFullscreen();}catch(_){}
+    await new Promise(resolve=>requestAnimationFrame(resolve));
+    const back=document.createElement('div');back.className='modalback host-handoff-overlay';back.id='hostHandoffModal';
     const peopleHtml=others.map(p=>`<button class="btn host-handoff-person" type="button" data-host-person="${esc(p.id)}"><span class="dot" style="background:${esc(p.color)}"></span>${esc(p.name)}</button>`).join('');
     back.innerHTML=`<div class="modal host-handoff-modal"><div class="brand">ALAMKAROK</div><div class="small">Room ${esc(state.room.code)}</div><h2>Host Handoff</h2><p class="sub">Choose who should become the new host before you leave.</p><div class="modalactions"><button class="btn" id="hostRandom">🎲 Random Person</button><button class="btn primary" id="hostSelect">Select Person</button></div><div id="hostPersonPicker" class="host-person-picker" hidden><div class="small">Select the new host:</div><div class="host-person-list">${peopleHtml}</div></div><div class="modalactions"><button class="btn" id="hostHandoffCancel">Cancel</button></div></div>`;
     document.body.appendChild(back);const picker=back.querySelector('#hostPersonPicker');
@@ -767,7 +780,7 @@
       if(!seen.has(key)){ const g={key,playlistId:x.playlist_id||null,title:x.playlist_title||'Individual Videos',items:[]}; seen.set(key,g);groups.push(g); }
       seen.get(key).items.push({x,i});
     });
-    const itemHtml=({x,i})=>`<div class="qitem private-item" draggable="false" data-drag-type="private" data-drag-id="${esc(x.id)}"><input class="private-check" type="checkbox" data-private-check="${esc(x.id)}" ${x.selected?'checked':''} aria-label="Select ${esc(x.title)}"><div class="qnum drag-handle" title="Drag to reorder">⠿<span>${i+1}</span></div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.playlist_id?'Playlist · ':''}Private · not uploaded</div></div><div class="actions queue-actions"><button class="action-sm private-upload-btn" data-private-upload="${esc(x.id)}" title="Upload this video to Shared Queue" aria-label="Upload this video">Upload</button><button class="action-sm move-btn" data-private-up="${esc(x.id)}" ${i===0?'disabled':''}>↑</button><button class="action-sm move-btn" data-private-down="${esc(x.id)}" ${i===state.privateList.length-1?'disabled':''}>↓</button><button class="action-sm danger-sm" data-private-del="${esc(x.id)}">×</button></div></div>`;
+    const itemHtml=({x,i})=>`<div class="qitem private-item" draggable="false" data-drag-type="private" data-drag-id="${esc(x.id)}"><input class="private-check" type="checkbox" data-private-check="${esc(x.id)}" ${x.selected?'checked':''} aria-label="Select ${esc(x.title)}"><div class="qnum drag-handle" title="Drag to reorder">⠿<span>${i+1}</span></div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.playlist_id?'Playlist · ':''}Private · not uploaded</div></div><div class="actions queue-actions"><button class="action-sm move-btn" data-private-up="${esc(x.id)}" ${i===0?'disabled':''}>↑</button><button class="action-sm move-btn" data-private-down="${esc(x.id)}" ${i===state.privateList.length-1?'disabled':''}>↓</button><button class="action-sm private-upload-btn" data-private-upload="${esc(x.id)}" title="Upload this video to Shared Queue" aria-label="Upload this video">Upload</button><button class="action-sm danger-sm" data-private-del="${esc(x.id)}">×</button></div></div>`;
     list.innerHTML=groups.map(g=>{
       if(!g.playlistId) return g.items.map(itemHtml).join('');
       const collapsed=!!state.playlistCollapsed[g.playlistId];
@@ -894,17 +907,32 @@
     const stateEl=document.getElementById('playState');
     if(stateEl)stateEl.textContent=(state.room?.is_playing?'Playing':'Paused')+' · '+(state.room?.current_video_id?'Video selected':'No video selected');
   }
-  async function sendCommand(action){
-    if(!state.room||!state.me)return;
-    pulsePlaybackControl(action==='play'||action==='pause'?'play':action==='previous'?'prev':'next');
-    if(action==='play'||action==='pause'){state.room.is_playing=action==='play';state.room.position_seconds=currentTime();}
-    else if(action==='next'||action==='previous'){
+  function applyOptimisticPlaybackCommand(action){
+    if(!state.room)return;
+    if(action==='play'||action==='pause'){
+      state.room.is_playing=action==='play';
+      state.room.position_seconds=Number(state.room.position_seconds||0);
+    }else if(action==='next'||action==='previous'){
       const idx=Number.isInteger(state.room.current_index)?state.room.current_index:state.queue.findIndex(x=>x.video_id===state.room.current_video_id);
       const targetIdx=action==='next'?Math.min(state.queue.length-1,idx+1):Math.max(0,idx-1);
       const target=state.queue[targetIdx];
-      if(target){state.room.current_index=targetIdx;state.room.current_video_id=target.video_id;state.room.position_seconds=0;state.room.is_playing=true;}
+      if(target){
+        state.room.current_index=targetIdx;
+        state.room.current_video_id=target.video_id;
+        state.room.position_seconds=0;
+        state.room.is_playing=true;
+      }
     }
     updatePlaybackControlsUI();
+  }
+
+  async function sendCommand(action){
+    if(!state.room||!state.me)return;
+    pulsePlaybackControl(action==='play'||action==='pause'?'play':action==='previous'?'prev':'next');
+    // Guests get immediate local feedback, while the host remains authoritative.
+    // The host must not optimistically mutate current_index before handling the command,
+    // otherwise Next/Previous would advance twice.
+    if(!state.isHost)applyOptimisticPlaybackCommand(action);
     const payload={from:state.me.id,action};
     broadcast('command',payload).catch(()=>{});
     if(state.isHost)await handleCommandBroadcast(payload);
