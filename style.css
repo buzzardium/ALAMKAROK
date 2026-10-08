@@ -1633,18 +1633,35 @@ body{
 
 /* MOBILE LIST: give titles real width; controls move underneath */
 @media(max-width:780px){
-  .qitem[data-drag-type="shared"],
-  .qitem.private-item{
-    grid-template-columns:24px 56px minmax(0,1fr)!important;
+  .qitem[data-drag-type="shared"]{
+    grid-template-columns:30px 56px minmax(0,1fr)!important;
     grid-template-rows:auto auto!important;
     align-items:center!important;
     column-gap:8px!important;
     row-gap:7px!important;
     padding:10px!important;
   }
-  .qitem[data-drag-type="shared"] .actions,
-  .qitem.private-item .actions{
+  .qitem.private-item{
+    grid-template-columns:24px 30px 56px minmax(0,1fr)!important;
+    grid-template-rows:auto auto!important;
+    align-items:center!important;
+    column-gap:8px!important;
+    row-gap:7px!important;
+    padding:10px!important;
+  }
+  .qitem[data-drag-type="shared"] .actions{
     grid-column:3 / -1!important;
+    grid-row:2!important;
+    justify-self:stretch!important;
+    width:100%!important;
+    display:flex!important;
+    justify-content:flex-end!important;
+    flex-wrap:nowrap!important;
+    gap:6px!important;
+    margin-top:1px!important;
+  }
+  .qitem.private-item .actions{
+    grid-column:4 / -1!important;
     grid-row:2!important;
     justify-self:stretch!important;
     width:100%!important;
