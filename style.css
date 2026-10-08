@@ -1760,8 +1760,9 @@ body{
 }
 
 @media(max-width:780px){
+  #queueList.long-list-scroll,
   #privateList.long-list-scroll{
-    max-height:min(var(--list-scroll-height),55vh)!important;
+    max-height:var(--list-scroll-height)!important;
     min-height:0!important;
   }
   .playlist-subbody{
