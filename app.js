@@ -6,7 +6,7 @@
   const colors = ['#9b5cff','#28a8ff','#18c9a0','#ff9d2e','#ff4f5f','#f1d21b','#ef67c7','#7bd66f','#54d8e8','#ff6f9c'];
   const state = {
     room:null, me:null, people:[], queue:[], isHost:false, channel:null,
-    player:null, playerReady:false, ytReady:false, ytLoading:false, currentPosition:0, busy:false, pendingSwitchSession:null, privateList:[], privateBusy:false, privateCollapsed:false, sharedCollapsed:false, playlistCollapsed:{}, queueVersion:0, chatMessages:[], chatLoading:false, pointsReady:false, endPreviewItems:null, drag:{type:null,id:null}, reconnectTimer:null, reconnecting:false, leaving:false
+    player:null, playerReady:false, ytReady:false, ytLoading:false, currentPosition:0, playbackStartedAt:0, playbackPlayedSeconds:0, busy:false, pendingSwitchSession:null, privateList:[], privateBusy:false, privateCollapsed:false, sharedCollapsed:false, playlistCollapsed:{}, queueVersion:0, chatMessages:[], chatLoading:false, pointsReady:false, endPreviewItems:null, drag:{type:null,id:null}, reconnectTimer:null, reconnecting:false, leaving:false
   };
 
   function esc(v){ return String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -1020,7 +1020,40 @@
     notify('Video removed');
   }
   async function normalizePositions(){for(let i=0;i<state.queue.length;i++){const r=await getClient().from('queue_items').update({position:i}).eq('id',state.queue[i].id);if(r.error)break;}}
-  async function playQueueItem(id){const item=state.queue.find(x=>x.id===id);if(!item)return;await performPlayback('load',item.video_id,0,true);}
+  function resetPlaybackTiming(){state.playbackStartedAt=0;state.playbackPlayedSeconds=0;}
+  function finalizePlaybackTiming(){
+    if(state.playbackStartedAt){state.playbackPlayedSeconds+=Math.max(0,(Date.now()-state.playbackStartedAt)/1000);state.playbackStartedAt=0;}
+    return Number(state.playbackPlayedSeconds||0);
+  }
+  function startPlaybackTiming(){if(!state.playbackStartedAt)state.playbackStartedAt=Date.now();}
+  async function moveCurrentForInterruption(){
+    const currentId=state.room?.current_video_id;
+    const idx=Number.isInteger(state.room?.current_index)?state.room.current_index:state.queue.findIndex(x=>x.video_id===currentId);
+    const current=idx>=0?state.queue[idx]:null;
+    if(!current)return;
+    const playedSeconds=finalizePlaybackTiming();
+    if(playedSeconds>=30){
+      const r=await getClient().from('queue_items').delete().eq('id',current.id);
+      if(r.error)throw r.error;
+      await refreshQueue();await normalizePositions();await refreshQueue();
+    }else{
+      const last=state.queue[state.queue.length-1];
+      if(last&&last.id!==current.id)await reorderSharedQueue(current.id,last.id);
+    }
+    await broadcast('queue',{queue:state.queue,queue_version:state.queueVersion});
+  }
+  async function playQueueItem(id){
+    const item=state.queue.find(x=>x.id===id);if(!item)return;
+    if(item.video_id!==state.room?.current_video_id){
+      await moveCurrentForInterruption();
+      await refreshQueue();
+      const selected=state.queue.find(x=>x.id===id);if(!selected)return;
+      if(state.queue[0]?.id!==selected.id){await reorderSharedQueue(selected.id,state.queue[0].id);await refreshQueue();}
+    }
+    resetPlaybackTiming();
+    const selected=state.queue.find(x=>x.id===id);
+    if(selected)await performPlayback('load',selected.video_id,0,true);
+  }
   async function advanceAfterEnd(){
     if(!state.isHost)return;
 
@@ -1101,12 +1134,18 @@
     let idx=Number.isInteger(state.room.current_index)?state.room.current_index:0;
     if(payload.action==='next')idx=Math.min(state.queue.length-1,idx+1);
     if(payload.action==='previous')idx=Math.max(0,idx-1);
-    if(payload.action==='load'&&payload.videoId){await performPlayback('load',payload.videoId,0,true);return;}
-    if((payload.action==='next'||payload.action==='previous')&&state.queue[idx])await performPlayback('load',state.queue[idx].video_id,0,true);
+    if(payload.action==='load'&&payload.videoId){
+      if(payload.videoId!==state.room.current_video_id)await moveCurrentForInterruption();
+      await performPlayback('load',payload.videoId,0,true);return;
+    }
+    if((payload.action==='next'||payload.action==='previous')&&state.queue[idx]){
+      if(state.queue[idx].video_id!==state.room.current_video_id)await moveCurrentForInterruption();
+      await performPlayback('load',state.queue[idx].video_id,0,true);
+    }
   }
   function currentTime(){try{return state.playerReady?state.player.getCurrentTime():Number(state.room.position_seconds||0);}catch(_){return Number(state.room.position_seconds||0);}}
   async function performPlayback(action,videoId,position=0,playing=false,preservePreview=false){
-    if(action==='load'){const idx=state.queue.findIndex(x=>x.video_id===videoId);const patch={current_video_id:videoId,current_index:idx<0?0:idx,is_playing:playing,position_seconds:position};const r=await getClient().from('rooms').update({...patch,updated_at:new Date().toISOString()}).eq('id',state.room.id).select().single();if(!r.error)state.room=r.data;updateRoomView();if(state.isHost)loadVideo(videoId,position,playing,preservePreview);await broadcast('room',patch);return;}
+    if(action==='load'){resetPlaybackTiming();const idx=state.queue.findIndex(x=>x.video_id===videoId);const patch={current_video_id:videoId,current_index:idx<0?0:idx,is_playing:playing,position_seconds:position};const r=await getClient().from('rooms').update({...patch,updated_at:new Date().toISOString()}).eq('id',state.room.id).select().single();if(!r.error)state.room=r.data;updateRoomView();if(state.isHost)loadVideo(videoId,position,playing,preservePreview);await broadcast('room',patch);return;}
     const playingNow=action==='play';const pos=position;const patch={is_playing:playingNow,position_seconds:pos,updated_at:new Date().toISOString()};const r=await getClient().from('rooms').update(patch).eq('id',state.room.id).select().single();if(!r.error)state.room=r.data;updateRoomView();if(state.isHost)applyLocalPlay(playingNow);await broadcast('room',patch);
   }
 
@@ -1207,8 +1246,10 @@
           onStateChange:async e=>{
             if(e.data===YT.PlayerState.ENDED){showEndPreview();await advanceAfterEnd();}
             else if(e.data===YT.PlayerState.PLAYING){
+              startPlaybackTiming();
               state.room.is_playing=true;state.room.position_seconds=currentTime();await broadcast('room',{is_playing:true,position_seconds:state.room.position_seconds});
             }else if(e.data===YT.PlayerState.PAUSED){
+              finalizePlaybackTiming();
               state.room.is_playing=false;state.room.position_seconds=currentTime();await broadcast('room',{is_playing:false,position_seconds:state.room.position_seconds});
             }
           },
