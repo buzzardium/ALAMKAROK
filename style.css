@@ -1581,3 +1581,23 @@ body{
   }
   .qitem.dragging{transition:none!important}
 }
+
+
+/* ALAMKAROK interaction polish */
+.control{touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:transform 120ms ease,filter 120ms ease,box-shadow 120ms ease;will-change:transform}
+.control-pressing{transform:scale(.94)!important;filter:brightness(1.12);box-shadow:0 0 0 3px rgba(255,255,255,.08)}
+.action-sm{touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:transform 120ms ease,background-color 120ms ease,box-shadow 120ms ease;will-change:transform}
+.action-sm:active{transform:translateY(1px) scale(.96)}
+.qitem[data-drag-type="shared"],.qitem.private-item{will-change:transform}
+.qitem[data-drag-type="shared"] .move-btn,.qitem.private-item .move-btn,.private-upload-btn{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.private-upload-btn{color:#9ff0ce;background:#12382d;font-weight:900}
+.private-upload-btn:hover{background:#17503f;color:#fff}
+.private-upload-btn:active{transform:translateY(1px) scale(.96)}
+.drag-handle{touch-action:none!important}
+.modalback{z-index:100000!important}
+.host-handoff-modal{position:relative;z-index:100001;width:min(520px,calc(100vw - 28px));max-height:90vh;overflow:auto}
+.host-handoff-modal .modalactions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.host-person-picker{margin-top:16px;padding:14px;border:1px solid #2a3a51;border-radius:14px;background:rgba(8,14,23,.55)}
+.host-person-list{display:grid;gap:8px;margin-top:10px}
+.host-handoff-person{width:100%;display:flex;align-items:center;justify-content:flex-start;gap:10px;text-align:left}
+@media(max-width:600px){.host-handoff-modal{width:min(100%,calc(100vw - 20px));padding:18px}.host-handoff-modal .modalactions{gap:8px}.host-handoff-modal .modalactions .btn{flex:1;min-width:130px}}
