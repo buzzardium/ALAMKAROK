@@ -1545,3 +1545,39 @@ body{
 .private-upload-btn:hover{background:#17503f;color:#fff}
 .private-upload-btn:active{transform:translateY(1px) scale(.96)}
 .modalback{z-index:10000}
+
+/* MOBILE + PLAYBACK INTERACTION FIXES */
+.control{
+  touch-action:manipulation;
+  -webkit-tap-highlight-color:transparent;
+  transition:transform 120ms cubic-bezier(.2,.8,.2,1),filter 120ms ease;
+  will-change:transform;
+}
+.control:active{transform:scale(.93)}
+.control.main:active{transform:scale(.94)}
+.command-pulse{animation:commandPulse .18s cubic-bezier(.2,.8,.2,1)}
+@keyframes commandPulse{0%{transform:scale(1)}45%{transform:scale(.91)}100%{transform:scale(1)}}
+.move-btn,.private-upload-btn,.danger-sm{
+  touch-action:manipulation;
+  -webkit-tap-highlight-color:transparent;
+}
+.private-upload-btn{min-width:56px;font-weight:800}
+.modalback{
+  position:fixed!important;
+  inset:0!important;
+  z-index:2147483647!important;
+  isolation:isolate;
+}
+.host-handoff-modal{
+  position:relative;
+  z-index:2147483647;
+}
+@media(max-width:780px){
+  .qitem[data-drag-type="shared"],
+  .qitem.private-item{
+    will-change:transform;
+    backface-visibility:hidden;
+    -webkit-backface-visibility:hidden;
+  }
+  .qitem.dragging{transition:none!important}
+}
