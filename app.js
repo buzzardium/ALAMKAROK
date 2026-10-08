@@ -451,32 +451,32 @@
       el.classList.remove('long-list-scroll');
       el.style.removeProperty('--list-scroll-height');
       el.style.removeProperty('height');
+      el.style.removeProperty('max-height');
       requestAnimationFrame(()=>{
         const items=[...el.querySelectorAll('.qitem[data-drag-type]')].filter(item=>item.getBoundingClientRect().height>0);
         if(!items.length)return;
+
         const listRect=el.getBoundingClientRect();
         const scrollTop=el.scrollTop||0;
-        const itemBottom=item=>{
-          if(el.id==='queueList')return item.offsetTop+item.offsetHeight;
-          return item.getBoundingClientRect().bottom-listRect.top+scrollTop;
-        };
-        const naturalHeight=itemBottom(items[items.length-1])+4;
+        const contentBottom=item=>item.getBoundingClientRect().bottom-listRect.top+scrollTop;
         const target=items[Math.min(limit,items.length)-1];
-        const limitHeight=target?itemBottom(target)+4:naturalHeight;
-        const shouldScroll=el.id==='privateList'
-          ? items.length>limit
-          : items.length>limit;
+        const contentHeight=Math.ceil((target?contentBottom(target):contentBottom(items[items.length-1]))+4);
+        const shouldScroll=items.length>limit;
+
         if(!shouldScroll)return;
-        const height=el.id==='privateList'
-          ? Math.max(220,limitHeight)
-          : Math.max(220,limitHeight);
-        const scrollHeight=Math.ceil(height)+'px';
+
+        // The viewport is always sized to exactly the first 10 visible video rows.
+        // The calculation is based on content coordinates, so scrolling/re-rendering
+        // cannot make the viewport shrink.
+        const scrollHeight=Math.max(220,contentHeight)+'px';
         el.style.setProperty('--list-scroll-height',scrollHeight);
         el.style.setProperty('height',scrollHeight);
+        el.style.setProperty('max-height',scrollHeight);
         el.classList.add('long-list-scroll');
       });
     });
   }
+
   function updateRoomView(){
     if(!document.querySelector('.room-screen')){renderRoom();return;}
     const current=state.room.current_video_id,q=state.queue;
