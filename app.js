@@ -6,7 +6,7 @@
   const colors = ['#9b5cff','#28a8ff','#18c9a0','#ff9d2e','#ff4f5f','#f1d21b','#ef67c7','#7bd66f','#54d8e8','#ff6f9c'];
   const state = {
     room:null, me:null, people:[], queue:[], isHost:false, channel:null,
-    player:null, playerReady:false, ytReady:false, ytLoading:false, currentPosition:0, busy:false, privateList:[], privateBusy:false, privateCollapsed:false, sharedCollapsed:false, playlistCollapsed:{}, queueVersion:0, chatMessages:[], chatLoading:false, pointsReady:false, endPreviewItems:null, drag:{type:null,id:null}
+    player:null, playerReady:false, ytReady:false, ytLoading:false, currentPosition:0, busy:false, pendingSwitchSession:null, privateList:[], privateBusy:false, privateCollapsed:false, sharedCollapsed:false, playlistCollapsed:{}, queueVersion:0, chatMessages:[], chatLoading:false, pointsReady:false, endPreviewItems:null, drag:{type:null,id:null}, reconnectTimer:null, reconnecting:false, leaving:false
   };
 
   function esc(v){ return String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -14,6 +14,80 @@
   function roomCode(){ return Math.random().toString(36).slice(2,7).toUpperCase(); }
   function validConfig(){ return /^https:\/\/[^\s]+\.supabase\.co(?:\/)?$/.test(String(cfg.SUPABASE_URL||'')) && /^sb_publishable_/.test(String(cfg.SUPABASE_ANON_KEY||'')); }
   function roomUrl(code){ return `${location.origin}${location.pathname}?room=${encodeURIComponent(code)}`; }
+  const ROOM_SESSION_KEY='alamkarok-room-session-v1';
+  const PREVIOUS_ROOM_KEY='alamkarok-previous-room-v1';
+  function saveRoomSession(){ try{ if(state.room&&state.me) localStorage.setItem(ROOM_SESSION_KEY,JSON.stringify({roomId:state.room.id,roomCode:state.room.code,participantId:state.me.id,userId:state.me.user_id,isHost:!!state.isHost})); }catch(_){} }
+  function readRoomSession(){ try{ const raw=localStorage.getItem(ROOM_SESSION_KEY); if(!raw)return null; const s=JSON.parse(raw); return s&&s.roomId&&s.roomCode&&s.participantId?s:null; }catch(_){return null;} }
+  function clearRoomSession(){ try{ localStorage.removeItem(ROOM_SESSION_KEY); }catch(_){} }
+  function savePreviousRoom(){ try{ if(state.room&&state.me) localStorage.setItem(PREVIOUS_ROOM_KEY,JSON.stringify({roomId:state.room.id,roomCode:state.room.code,userId:state.me.user_id||null,name:state.me.name||'',color:state.me.color||'',isHost:!!state.isHost,savedAt:new Date().toISOString()})); }catch(_){} }
+  function readPreviousRoom(){ try{ const raw=localStorage.getItem(PREVIOUS_ROOM_KEY); if(!raw)return null; const s=JSON.parse(raw); return s&&s.roomId&&s.roomCode&&s.userId&&s.name?s:null; }catch(_){return null;} }
+  function clearPreviousRoom(){ try{ localStorage.removeItem(PREVIOUS_ROOM_KEY); }catch(_){} }
+  const DEVICE_ID_KEY='alamkarok-device-id-v1';
+  const PERSONAL_PLAYLISTS_KEY='alamkarok-personal-playlists-v1';
+  function deviceId(){ try{ let id=localStorage.getItem(DEVICE_ID_KEY); if(!id){id=uuid();localStorage.setItem(DEVICE_ID_KEY,id);} return id; }catch(_){return 'local-device';} }
+  function personalPlaylistsKey(){ return `${PERSONAL_PLAYLISTS_KEY}-${deviceId()}`; }
+  function loadPersonalPlaylists(){ try{ const raw=localStorage.getItem(personalPlaylistsKey()); const parsed=raw?JSON.parse(raw):[]; state.personalPlaylists=Array.isArray(parsed)?parsed.filter(x=>x&&x.name&&Array.isArray(x.items)):[]; }catch(_){state.personalPlaylists=[];} }
+  function savePersonalPlaylists(){ try{ localStorage.setItem(personalPlaylistsKey(),JSON.stringify(state.personalPlaylists)); }catch(_){} }
+  function saveStoredPlaylist(name,items){
+    const clean=items.filter(x=>x&&x.video_id).map(x=>({video_id:x.video_id,title:x.title||'YouTube video',thumbnail:x.thumbnail||ytThumb(x.video_id),playlist_id:x.playlist_id||null,playlist_title:x.playlist_title||null}));
+    if(!clean.length)return false;
+    const existing=state.personalPlaylists.find(x=>x.name.toLowerCase()===name.toLowerCase());
+    const record={id:existing?.id||'pl-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8),name:name.trim(),items:clean,updatedAt:new Date().toISOString(),createdAt:existing?.createdAt||new Date().toISOString()};
+    if(existing)Object.assign(existing,record);else state.personalPlaylists.push(record);
+    savePersonalPlaylists(); return true;
+  }
+  function loadStoredPlaylist(id){
+    const p=state.personalPlaylists.find(x=>x.id===id); if(!p)return;
+    state.privateList=p.items.map(x=>({...x,id:privateItemId(),selected:false}));
+    state.privateCollapsed=false; savePrivateList(); renderPrivateList(); updateListSectionUI();
+    const body=document.getElementById('privateBody'); if(body)body.scrollIntoView({behavior:'smooth',block:'start'});
+    notify(`Loaded “${p.name}” into My List.`,'info');
+  }
+  function openStoredLists(){
+    loadPersonalPlaylists();
+    const back=document.createElement('div'); back.className='modalback';
+    const rows=state.personalPlaylists.map(p=>`<div class="stored-list-row"><button class="btn stored-list-open" data-stored-open="${esc(p.id)}"><b>${esc(p.name)}</b><span class="small">${p.items.length} song${p.items.length===1?'':'s'}</span></button><button class="btn danger-sm stored-list-delete" data-stored-del="${esc(p.id)}" title="Delete stored list">×</button></div>`).join('');
+    back.innerHTML=`<div class="modal stored-lists-modal"><div class="brand">ALAMKAROK</div><h2>Stored Lists</h2><p class="sub">Your personal playlists are stored on this device and are not shared with the room.</p><div class="stored-list-list">${rows||'<div class="empty">No stored lists yet.</div>'}</div><div class="modalactions"><button class="btn" id="saveCurrentList">Save Current My List</button><button class="btn primary" id="closeStoredLists">Close</button></div></div>`;
+    document.body.appendChild(back);
+    back.querySelector('#closeStoredLists').onclick=()=>back.remove();
+    back.querySelector('#saveCurrentList').onclick=()=>{
+      if(!state.privateList.length)return notify('My List is empty.','error');
+      const name=window.prompt('Name this stored list:','My Playlist');
+      if(!name||!name.trim())return;
+      if(saveStoredPlaylist(name.trim(),state.privateList)){back.remove();notify(`Saved “${name.trim()}” as a stored list.`,'info');}
+    };
+    back.querySelectorAll('[data-stored-open]').forEach(b=>b.onclick=()=>{const id=b.dataset.storedOpen;back.remove();loadStoredPlaylist(id);});
+    back.querySelectorAll('[data-stored-del]').forEach(b=>b.onclick=()=>{const id=b.dataset.storedDel;state.personalPlaylists=state.personalPlaylists.filter(x=>x.id!==id);savePersonalPlaylists();b.closest('.stored-list-row')?.remove();});
+  }
+  function showExistingRoomPrompt(session,requestedCode){
+    const back=document.createElement('div'); back.className='modalback';
+    const target=requestedCode&&requestedCode!==session.roomCode?`Switch to <b>${esc(requestedCode)}</b>?`:'You can continue where you left off.';
+    back.innerHTML=`<div class="modal center"><div class="brand">ALAMKAROK</div><div class="small">You're already in a room</div><h2>Room ${esc(session.roomCode)}</h2><p class="sub">${target}</p><div class="modalactions"><button class="btn" id="stayRoom">Stay in Room</button><button class="btn primary" id="switchRoom">Switch Room</button></div></div>`;
+    document.body.appendChild(back);
+    back.querySelector('#stayRoom').onclick=async()=>{back.remove();try{await restoreRoomSession(session);}catch(e){clearRoomSession();renderHome();notify('Your previous room is no longer available.','error');}};
+    back.querySelector('#switchRoom').onclick=async()=>{back.remove();await switchRoomFromPrompt(session);};
+  }
+  async function restoreRoomSession(session){
+    const client=getClient();
+    const [roomRes,participantRes]=await Promise.all([
+      client.from('rooms').select('*').eq('id',session.roomId).maybeSingle(),
+      client.from('participants').select('*').eq('id',session.participantId).maybeSingle()
+    ]);
+    if(roomRes.error)throw roomRes.error; if(participantRes.error)throw participantRes.error;
+    if(!roomRes.data||!participantRes.data||participantRes.data.room_id!==roomRes.data.id)throw new Error('Room session is no longer valid.');
+    state.room=roomRes.data; state.me=participantRes.data; state.isHost=state.me.user_id===state.room.host_id;
+    await enterRoom();
+  }
+  async function switchRoomFromPrompt(oldSession){
+    renderHome();
+    const joinBtn=document.getElementById('joinCode');
+    if(joinBtn) joinBtn.dataset.switching='1';
+    state.pendingSwitchSession=oldSession;
+  }
+  async function leaveStoredSessionAfterSuccessfulJoin(oldSession){
+    if(!oldSession||!oldSession.participantId)return;
+    try{ await getClient().from('participants').delete().eq('id',oldSession.participantId); }catch(_){}
+  }
   function ytId(value){
     try {
       const u = new URL(value);
@@ -51,6 +125,8 @@
   function renderHome(){
     const configProblem = !validConfig();
     const sdkProblem = !window.supabase || typeof window.supabase.createClient !== 'function';
+    const previous=readPreviousRoom();
+    const previousMarkup=previous?`<div class="previous-room card"><div class="section-title"><h2>Previous Room</h2><span class="badge">${esc(previous.roomCode)}</span></div><div class="small">Return as <b>${esc(previous.name)}</b> and keep your previous room identity and private list.</div><button class="btn primary wide" id="joinPrevious" ${configProblem||sdkProblem?'disabled':''}>Join Previous Room</button></div>`:'';
     app.innerHTML=`<div class="wrap"><div class="hero card">
       <div class="brand">ALAMKAROK</div><div class="eyebrow">SHARED MEDIA ROOM</div>
       <h1 class="h1">Queue videos. Control playback. Share the room.</h1>
@@ -63,6 +139,7 @@
         <div class="divider"><span>or join an existing room</span></div>
         <div class="row"><input class="input" id="roomCode" maxlength="5" placeholder="Room code e.g. 7K4P9" autocomplete="off" style="flex:1;text-transform:uppercase"><button class="btn" id="joinCode" ${configProblem||sdkProblem?'disabled':''}>Join</button></div>
       </div>
+      ${previousMarkup}
       <div class="featuregrid"><div>📺 <b>Host playback</b><span>Audio and video play through the host device</span></div><div>🔀 <b>Shared queue</b><span>Everyone sees the same order</span></div><div>🎛️ <b>Shared controls</b><span>Everyone can play, pause, next and previous</span></div><div>👥 <b>People + colours</b><span>Name required when joining</span></div></div>
     </div><div class="footer">ALAMKAROK • internet-based shared queue</div></div>`;
     if(!configProblem&&!sdkProblem)loadAnnouncement();
@@ -70,6 +147,7 @@
       document.getElementById('create').onclick=createRoom;
       document.getElementById('joinCode').onclick=()=>joinRoom(document.getElementById('roomCode').value.trim().toUpperCase());
       document.getElementById('roomCode').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('joinCode').click();});
+      const previousBtn=document.getElementById('joinPrevious'); if(previousBtn) previousBtn.onclick=joinPreviousRoom;
     }
   }
 
@@ -131,6 +209,32 @@
       const userId=uuid(); nameModal(code,false,name=>registerParticipant(data,false,userId,name).catch(e=>errorScreen('Could not join the room',e.message)));
     }catch(e){notify(e.message||'Could not join room','error');}
   }
+  async function joinPreviousRoom(){
+    const previous=readPreviousRoom();
+    if(!previous)return notify('No previous room is saved.','error');
+    try{
+      const client=getClient();
+      const {data:room,error}=await client.from('rooms').select('*').eq('id',previous.roomId).maybeSingle();
+      if(error)throw error;
+      if(!room){
+        clearPreviousRoom();
+        renderHome();
+        return notify('Your previous room is no longer available.','error');
+      }
+      const {data:people,error:listErr}=await client.from('participants').select('*').eq('room_id',room.id).order('created_at',{ascending:true});
+      if(listErr)throw listErr;
+      const existing=(people||[]).find(p=>p.user_id===previous.userId);
+      if(existing){
+        state.room=room;state.me=existing;state.isHost=existing.user_id===room.host_id;saveRoomSession();clearPreviousRoom();await enterRoom();return;
+      }
+      const {data:p,error:insertErr}=await client.from('participants').insert({room_id:room.id,user_id:previous.userId,name:previous.name.slice(0,40),color:previous.color||colors[(people||[]).length%colors.length]}).select().single();
+      if(insertErr)throw insertErr;
+      state.room=room;state.me=p;state.isHost=p.user_id===room.host_id;saveRoomSession();clearPreviousRoom();await enterRoom();
+    }catch(e){
+      notify(e.message||'Could not rejoin previous room.','error');
+    }
+  }
+
   async function registerParticipant(room,isHost,userId,name){
     const client=getClient();
     const {data:people,error:listErr}=await client.from('participants').select('*').eq('room_id',room.id).order('created_at',{ascending:true});
@@ -138,7 +242,7 @@
     const color=colors[(people||[]).length%colors.length];
     const {data:p,error}=await client.from('participants').insert({room_id:room.id,user_id:userId,name:name.slice(0,40),color}).select().single();
     if(error) throw error;
-    state.room=room;state.me=p;state.isHost=isHost;await enterRoom();
+    state.room=room;state.me=p;state.isHost=isHost;saveRoomSession();const oldSession=state.pendingSwitchSession;state.pendingSwitchSession=null;await enterRoom();if(oldSession&&oldSession.roomId!==room.id)await leaveStoredSessionAfterSuccessfulJoin(oldSession);
   }
   async function enterRoom(){
     const client=getClient();
@@ -150,20 +254,80 @@
     if(people.error)throw people.error;if(q.error)throw q.error;if(room.error)throw room.error;
     state.people=people.data||[];state.queue=q.data||[];state.room=room.data;state.queueVersion=Number(state.room.queue_version||0);state.chatMessages=[];loadPrivateList();await loadChatMessages();renderRoom();await setupRealtime();if(state.isHost)loadYouTubeAPI();
   }
-  async function setupRealtime(){
+  async function recoverRoomState(){
+    if(!state.room||!state.me||state.leaving)return;
     const client=getClient();
-    state.channel=client.channel(`alamkarok-${state.room.id}`,{config:{broadcast:{self:true},presence:{key:state.me.id}}});
-    state.channel.on('broadcast',{event:'command'},({payload})=>handleCommandBroadcast(payload))
+    const [people,q,room]=await Promise.all([
+      client.from('participants').select('*').eq('room_id',state.room.id).order('created_at',{ascending:true}),
+      client.from('queue_items').select('*').eq('room_id',state.room.id).order('position',{ascending:true}),
+      client.from('rooms').select('*').eq('id',state.room.id).single()
+    ]);
+    if(people.error||q.error||room.error)throw (people.error||q.error||room.error);
+    if(!room.data)throw new Error('Room no longer exists.');
+    const me=await client.from('participants').select('*').eq('id',state.me.id).maybeSingle();
+    if(me.error)throw me.error;
+    if(!me.data||me.data.room_id!==room.data.id)throw new Error('Your room session is no longer valid.');
+    state.people=people.data||[];
+    state.queue=q.data||[];
+    state.room=room.data;
+    state.me=me.data;
+    state.isHost=state.me.user_id===state.room.host_id;
+    state.queueVersion=Number(state.room.queue_version||0);
+    await loadChatMessages();
+    updateRoomView();
+    if(state.isHost&&state.room.current_video_id)ensureYouTubePlayer();
+  }
+
+  function scheduleRealtimeReconnect(){
+    if(state.leaving||!state.room||!state.me||state.reconnectTimer)return;
+    state.reconnectTimer=setTimeout(async()=>{
+      state.reconnectTimer=null;
+      if(state.leaving||!state.room||!state.me)return;
+      state.reconnecting=true;
+      try{
+        const old=state.channel;
+        state.channel=null;
+        if(old)try{await getClient().removeChannel(old);}catch(_){}
+        await recoverRoomState();
+        await setupRealtime();
+        notify('Connection restored.','info');
+      }catch(e){
+        notify('Connection lost. Reconnecting…','error');
+        scheduleRealtimeReconnect();
+      }finally{
+        state.reconnecting=false;
+      }
+    },2000);
+  }
+
+  async function setupRealtime(){
+    if(state.leaving||!state.room||!state.me)return;
+    const client=getClient();
+    const channel=client.channel(`alamkarok-${state.room.id}`,{config:{broadcast:{self:true},presence:{key:state.me.id}}});
+    state.channel=channel;
+    channel.on('broadcast',{event:'command'},({payload})=>handleCommandBroadcast(payload))
       .on('broadcast',{event:'queue'},({payload})=>{state.queue=payload.queue||[];if(Number.isFinite(Number(payload.queue_version)))state.queueVersion=Number(payload.queue_version);updateRoomView();})
       .on('broadcast',{event:'people'},({payload})=>{state.people=payload.people||[];updateRoomView();})
-      .on('broadcast',{event:'room'},({payload})=>{state.room={...state.room,...payload};if(Number.isFinite(Number(payload?.queue_version)))state.queueVersion=Number(payload.queue_version);updateRoomView();})
+      .on('broadcast',{event:'room'},({payload})=>{state.room={...state.room,...payload};if(Number.isFinite(Number(payload?.queue_version)))state.queueVersion=Number(payload.queue_version);saveRoomSession();updateRoomView();})
       .on('broadcast',{event:'chat'},({payload})=>{if(payload?.message) receiveChatMessage(payload.message);})
       .on('broadcast',{event:'points'},({payload})=>{if(payload?.people){state.people=payload.people;updatePeopleUI();}})
       .on('postgres_changes',{event:'*',schema:'public',table:'participants',filter:`room_id=eq.${state.room.id}`},refreshPeople)
       .on('postgres_changes',{event:'*',schema:'public',table:'chat_messages',filter:`room_id=eq.${state.room.id}`},refreshChatMessages)
       .on('postgres_changes',{event:'*',schema:'public',table:'queue_items',filter:`room_id=eq.${state.room.id}`},refreshQueue)
       .on('postgres_changes',{event:'UPDATE',schema:'public',table:'rooms',filter:`id=eq.${state.room.id}`},refreshRoom)
-      .subscribe(status=>{if(status==='CHANNEL_ERROR')notify('Real-time connection failed. Refresh to reconnect.','error');});
+      .subscribe(async status=>{
+        if(status==='SUBSCRIBED'){
+          try{
+            await recoverRoomState();
+          }catch(e){
+            notify('Could not recover room state. Reconnecting…','error');
+            scheduleRealtimeReconnect();
+          }
+        }else if(status==='CHANNEL_ERROR'||status==='TIMED_OUT'||status==='CLOSED'){
+          notify('Real-time connection lost. Reconnecting…','error');
+          scheduleRealtimeReconnect();
+        }
+      });
   }
   async function refreshPeople(){const r=await getClient().from('participants').select('*').eq('room_id',state.room.id).order('created_at',{ascending:true});if(!r.error){state.people=r.data||[];updateRoomView();}}
   async function loadChatMessages(){try{const r=await getClient().from('chat_messages').select('*').eq('room_id',state.room.id).order('created_at',{ascending:true}).limit(80);if(!r.error)state.chatMessages=r.data||[];}catch(_){} }
@@ -178,12 +342,12 @@
   function openGivePoints(recipientId){const existing=document.getElementById('givePointsPop');if(existing)existing.remove();const p=state.people.find(x=>x.id===recipientId);if(!p)return;const back=document.createElement('div');back.className='point-popover';back.innerHTML=`<div class="point-pop-card"><div class="small">Give points to <b>${esc(p.name)}</b></div><div class="point-options"><button class="btn" data-pts="1">+1 ⭐</button><button class="btn" data-pts="5">+5 ⭐</button><button class="btn primary" data-pts="10">+10 ⭐</button></div><button class="point-close">Cancel</button></div>`;back.id='givePointsPop';document.body.appendChild(back);back.querySelectorAll('[data-pts]').forEach(b=>b.onclick=()=>givePoints(recipientId,Number(b.dataset.pts)));back.querySelector('.point-close').onclick=()=>back.remove();back.onclick=e=>{if(e.target===back)back.remove();};}
   async function givePoints(recipientId,amount){const back=document.getElementById('givePointsPop');if(back)back.remove();if(recipientId===state.me.id)return;if(![1,5,10].includes(amount))return;const recipient=state.people.find(x=>x.id===recipientId);if(!recipient)return;try{const r=await getClient().rpc('give_points',{p_room_id:state.room.id,p_giver_id:state.me.id,p_recipient_id:recipientId,p_amount:amount});if(r.error)throw r.error;await refreshPeople();await broadcast('points',{people:state.people});notify(`Gave ${amount} point${amount===1?'':'s'} to ${recipient.name} ⭐`,'info');}catch(e){notify('Points need the chat/points database update first.','error');}}
   async function refreshQueue(){const r=await getClient().from('queue_items').select('*').eq('room_id',state.room.id).order('position',{ascending:true});if(!r.error){state.queue=r.data||[];updateRoomView();}}
-  async function refreshRoom(){const r=await getClient().from('rooms').select('*').eq('id',state.room.id).single();if(!r.error){state.room=r.data;state.queueVersion=Number(r.data.queue_version||0);updateRoomView();if(state.isHost&&state.room.current_video_id)ensureYouTubePlayer();}}
+  async function refreshRoom(){const r=await getClient().from('rooms').select('*').eq('id',state.room.id).single();if(!r.error){const wasHost=!!state.isHost;state.room=r.data;state.queueVersion=Number(r.data.queue_version||0);state.isHost=!!state.me&&state.me.user_id===state.room.host_id;if(wasHost!==state.isHost){if(!state.isHost){try{if(state.player&&typeof state.player.stopVideo==='function')state.player.stopVideo();if(state.player&&typeof state.player.destroy==='function')state.player.destroy();}catch(_){}state.player=null;state.playerReady=false;}updateRoomView();if(state.isHost&&state.room.current_video_id)loadYouTubeAPI();}else{updateRoomView();if(state.isHost&&state.room.current_video_id)ensureYouTubePlayer();}saveRoomSession();}}
   async function broadcast(event,payload){if(state.channel) await state.channel.send({type:'broadcast',event,payload});}
 
   function renderRoom(){
     const current=state.room.current_video_id;const q=state.queue;
-    app.innerHTML=`<div class="wrap room-screen"><div class="top"><div><div class="brand">ALAMKAROK</div><div class="small">Room <b>${esc(state.room.code)}</b> · <span id="peopleCount">${state.people.length}</span> people</div></div><div class="actions"><span class="badge"><span class="dot" style="background:${esc(state.me.color)}"></span>${esc(state.me.name)}</span><button class="btn" id="showQr">QR</button></div></div>
+    app.innerHTML=`<div class="wrap room-screen"><div class="top"><div><div class="brand">ALAMKAROK</div><div class="small">Room <b>${esc(state.room.code)}</b> · <span id="peopleCount">${state.people.length}</span> people</div></div><div class="actions"><span class="badge"><span class="dot" style="background:${esc(state.me.color)}"></span>${esc(state.me.name)}</span><button class="btn" id="showQr">QR</button><button class="btn danger-sm" id="leaveRoom" type="button">Leave Room</button></div></div>
       <div class="roomgrid">
         <section class="player-column">
           <div class="card player-card"><div class="player player-shell" id="playerShell"><div id="player" class="playerbox"><div class="playerplaceholder" id="playerPlaceholder">${state.isHost?(current?'Loading YouTube player…':'Add a YouTube video to start playback.'):'Host is playing the video on their phone'}</div></div>${state.isHost?`<button class="fullscreen-btn" id="fullscreenBtn" type="button" title="Fullscreen" aria-label="Fullscreen">⛶</button>`:''}</div>${state.isHost?`<div class="end-preview" id="endPreview" aria-hidden="true"><button class="end-preview-tab" id="endPreviewTab" type="button" aria-expanded="false"><span>NEXT UP</span><span class="end-preview-tab-chevron">⌃</span></button><div class="end-preview-panel"><div class="end-preview-list" id="endPreviewList"></div><div class="end-preview-count" id="endPreviewCount"></div></div></div>`:''}<div class="controls"><button class="control" id="prev" title="Previous">⏮</button><button class="control main" id="play" title="Play/Pause">${state.room.is_playing?'❚❚':'▶'}</button><button class="control" id="next" title="Next">⏭</button></div>${state.isHost?`<div class="volume-control"><span>🔊</span><input id="volume" class="range" type="range" min="0" max="100" value="80" aria-label="Host volume"><span id="volumeValue">80%</span></div>`:''}<div class="small center" id="playState">${state.room.is_playing?'Playing':'Paused'} · ${current?'Video selected':'No video selected'}</div></div>
@@ -197,7 +361,7 @@
       </section>
 
       <section class="main-section private-section card gap private-card">
-        <div class="section-title section-toggle"><button class="btn collapse-btn" id="togglePrivate" data-collapse="private" aria-expanded="${state.privateCollapsed?'false':'true'}" aria-label="Collapse private list"><span class="chevron" aria-hidden="true">${state.privateCollapsed?'▼':'▲'}</span></button><div class="section-static-label">MY LIST <span class="section-private">— PRIVATE</span></div><button class="btn section-action-btn" id="privateSelectAll">Select All</button></div>
+        <div class="section-title section-toggle"><button class="btn collapse-btn" id="togglePrivate" data-collapse="private" aria-expanded="${state.privateCollapsed?'false':'true'}" aria-label="Collapse private list"><span class="chevron" aria-hidden="true">${state.privateCollapsed?'▼':'▲'}</span></button><div class="section-static-label">MY LIST <span class="section-private">— PRIVATE</span></div><div class="actions section-header-actions"><button class="btn section-action-btn" id="storedLists">Stored Lists</button><button class="btn section-action-btn" id="privateSelectAll">Select All</button></div></div>
                 <div id="privateBody" class="collapsible-body ${state.privateCollapsed?'collapsed':''}" aria-hidden="${state.privateCollapsed?'true':'false'}"><div class="row"><input class="input" id="privateUrl" placeholder="Paste a YouTube video or playlist link" inputmode="url"><button class="btn primary" id="privateAdd">Add to My List</button></div><div class="small private-help">Build your own list first. Select one, several, or all songs, then send them to the shared queue.</div><div class="queue" id="privateList"></div><div class="private-actions"><button class="btn green" id="uploadSelected">Upload Selected</button><button class="btn" id="uploadAll">Upload All</button></div></div>
       </section>
 
@@ -520,8 +684,80 @@
     }finally{state.busy=false;}
   }
 
+  function closeHostHandoffModal(){
+    const el=document.getElementById('hostHandoffModal');
+    if(el)el.remove();
+  }
+
+  async function completeHostHandoff(target){
+    if(state.leaving||!state.isHost||!state.room||!state.me||!target)return false;
+    const targetUserId=target.user_id;
+    if(!targetUserId){notify('The selected participant cannot become host.','error');return false;}
+    const client=getClient();
+    state.leaving=true;
+    try{
+      const r=await client.from('rooms').update({host_id:targetUserId,updated_at:new Date().toISOString()}).eq('id',state.room.id).eq('host_id',state.me.user_id).select().single();
+      if(r.error||!r.data)throw r.error||new Error('The host changed before handoff completed.');
+      state.room=r.data;
+      savePreviousRoom();
+      try{if(state.player&&typeof state.player.stopVideo==='function')state.player.stopVideo();if(state.player&&typeof state.player.destroy==='function')state.player.destroy();}catch(_){}
+      state.player=null;state.playerReady=false;
+      if(state.channel)try{await client.removeChannel(state.channel);}catch(_){}
+      if(state.me?.id)await client.from('participants').delete().eq('id',state.me.id);
+      clearRoomSession();
+      closeHostHandoffModal();
+      state.room=null;state.me=null;state.people=[];state.queue=[];state.channel=null;state.isHost=false;state.chatMessages=[];state.privateList=[];state.pendingSwitchSession=null;
+      renderHome();
+      notify(`${target.name} is now the host. You left the room.`,'info');
+      return true;
+    }catch(e){
+      state.leaving=false;
+      notify(e.message||'Could not transfer host.','error');
+      return false;
+    }
+  }
+
+  function showHostHandoffModal(){
+    const others=(state.people||[]).filter(p=>p.id!==state.me?.id&&p.user_id);
+    if(!others.length){leaveRoomNow();return;}
+    const back=document.createElement('div');
+    back.className='modalback';
+    back.id='hostHandoffModal';
+    const peopleHtml=others.map(p=>`<button class="btn host-handoff-person" type="button" data-host-person="${esc(p.id)}"><span class="dot" style="background:${esc(p.color)}"></span>${esc(p.name)}</button>`).join('');
+    back.innerHTML=`<div class="modal host-handoff-modal"><div class="brand">ALAMKAROK</div><div class="small">Room ${esc(state.room.code)}</div><h2>Host Handoff</h2><p class="sub">Other people are still in the room. Choose who should become the new host before you leave.</p><div class="modalactions"><button class="btn green" id="hostRandom">🎲 Random Person</button><button class="btn primary" id="hostSelect">Select Person</button></div><div id="hostPersonPicker" class="host-person-picker" hidden><div class="small">Select the new host:</div><div class="host-person-list">${peopleHtml}</div></div><div class="modalactions"><button class="btn" id="hostHandoffCancel">Cancel</button></div></div>`;
+    document.body.appendChild(back);
+    const pick=()=>back.querySelector('#hostPersonPicker');
+    back.querySelector('#hostHandoffCancel').onclick=()=>closeHostHandoffModal();
+    back.querySelector('#hostSelect').onclick=()=>{const el=pick();if(el)el.hidden=!el.hidden;};
+    back.querySelector('#hostRandom').onclick=async()=>{const target=others[Math.floor(Math.random()*others.length)];await completeHostHandoff(target);};
+    back.querySelectorAll('[data-host-person]').forEach(btn=>btn.onclick=async()=>{const target=others.find(p=>p.id===btn.dataset.hostPerson);await completeHostHandoff(target);});
+  }
+
+  async function leaveRoomNow(){
+    state.leaving=true;
+    if(state.reconnectTimer){clearTimeout(state.reconnectTimer);state.reconnectTimer=null;}
+    try{if(state.player&&typeof state.player.stopVideo==='function')state.player.stopVideo();if(state.player&&typeof state.player.destroy==='function')state.player.destroy();}catch(_){}
+    try{if(state.channel)await getClient().removeChannel(state.channel);}catch(_){}
+    try{if(state.me?.id)await getClient().from('participants').delete().eq('id',state.me.id);}catch(_){}
+    savePreviousRoom();
+    clearRoomSession();
+    state.room=null;state.me=null;state.people=[];state.queue=[];state.channel=null;state.player=null;state.playerReady=false;state.isHost=false;state.chatMessages=[];state.privateList=[];state.pendingSwitchSession=null;
+    renderHome();
+    notify('You left the room.','info');
+  }
+
+  async function leaveRoom(){
+    if(state.leaving)return;
+    if(!state.room||!state.me)return;
+    const confirmed=window.confirm(`Leave room ${state.room.code}?`);
+    if(!confirmed)return;
+    if(state.isHost&&(state.people||[]).some(p=>p.id!==state.me.id)){showHostHandoffModal();return;}
+    await leaveRoomNow();
+  }
+
   function bindRoomControls(){
-    document.getElementById('togglePrivate').onclick=()=>toggleListSection('private');document.getElementById('toggleShared').onclick=()=>toggleListSection('shared');document.getElementById('add').onclick=addLink;document.getElementById('shuffle').onclick=shuffleQueue;const privateAddBtn=document.getElementById('privateAdd'); if(privateAddBtn) privateAddBtn.onclick=(e)=>{e.preventDefault();addPrivateInput();};document.getElementById('privateSelectAll').onclick=selectAllPrivate;document.getElementById('uploadSelected').onclick=()=>uploadPrivate(false);document.getElementById('uploadAll').onclick=()=>uploadPrivate(true);document.getElementById('prev').onclick=()=>sendCommand('previous');document.getElementById('next').onclick=()=>sendCommand('next');document.getElementById('play').onclick=()=>sendCommand(state.room.is_playing?'pause':'play');document.getElementById('showQr').onclick=showQrModal;const chatSend=document.getElementById('roomChatSend');if(chatSend)chatSend.onclick=sendChat;const chatInput=document.getElementById('roomChatInput');if(chatInput)chatInput.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}});document.querySelectorAll('[data-emoji]').forEach(b=>b.onclick=()=>addEmoji(b.dataset.emoji));bindPointButtons();renderChatMessages();const fs=document.getElementById('fullscreenBtn');if(fs)fs.onclick=togglePlayerFullscreen;const previewTab=document.getElementById('endPreviewTab');if(previewTab)previewTab.onclick=()=>{const open=document.getElementById('endPreview')?.classList.contains('show');if(open)hideEndPreview();else{state.endPreviewItems=null;updateEndPreview();setEndPreviewOpen(true,false);}};const vol=document.getElementById('volume');if(vol){vol.oninput=()=>{const v=Number(vol.value);const label=document.getElementById('volumeValue');if(label)label.textContent=v+'%';if(state.playerReady&&state.player)try{state.player.setVolume(v);state.player.unMute();if(v===0)state.player.mute();}catch(_){}};}
+    const leaveBtn=document.getElementById('leaveRoom');if(leaveBtn)leaveBtn.onclick=leaveRoom;
+    document.getElementById('togglePrivate').onclick=()=>toggleListSection('private');document.getElementById('toggleShared').onclick=()=>toggleListSection('shared');document.getElementById('add').onclick=addLink;document.getElementById('shuffle').onclick=shuffleQueue;const privateAddBtn=document.getElementById('privateAdd'); if(privateAddBtn) privateAddBtn.onclick=(e)=>{e.preventDefault();addPrivateInput();};document.getElementById('privateSelectAll').onclick=selectAllPrivate;const storedListsBtn=document.getElementById('storedLists');if(storedListsBtn)storedListsBtn.onclick=openStoredLists;document.getElementById('uploadSelected').onclick=()=>uploadPrivate(false);document.getElementById('uploadAll').onclick=()=>uploadPrivate(true);document.getElementById('prev').onclick=()=>sendCommand('previous');document.getElementById('next').onclick=()=>sendCommand('next');document.getElementById('play').onclick=()=>sendCommand(state.room.is_playing?'pause':'play');document.getElementById('showQr').onclick=showQrModal;const chatSend=document.getElementById('roomChatSend');if(chatSend)chatSend.onclick=sendChat;const chatInput=document.getElementById('roomChatInput');if(chatInput)chatInput.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}});document.querySelectorAll('[data-emoji]').forEach(b=>b.onclick=()=>addEmoji(b.dataset.emoji));bindPointButtons();renderChatMessages();const fs=document.getElementById('fullscreenBtn');if(fs)fs.onclick=togglePlayerFullscreen;const previewTab=document.getElementById('endPreviewTab');if(previewTab)previewTab.onclick=()=>{const open=document.getElementById('endPreview')?.classList.contains('show');if(open)hideEndPreview();else{state.endPreviewItems=null;updateEndPreview();setEndPreviewOpen(true,false);}};const vol=document.getElementById('volume');if(vol){vol.oninput=()=>{const v=Number(vol.value);const label=document.getElementById('volumeValue');if(label)label.textContent=v+'%';if(state.playerReady&&state.player)try{state.player.setVolume(v);state.player.unMute();if(v===0)state.player.mute();}catch(_){}};}
     document.getElementById('url').addEventListener('keydown',e=>{if(e.key==='Enter')addLink();});
     document.getElementById('privateUrl').addEventListener('keydown',e=>{if(e.key==='Enter')addPrivateInput();});
     document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>removeItem(b.dataset.del));document.querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>playQueueItem(b.dataset.play));document.querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.up,-1));document.querySelectorAll('[data-down]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.down,1));
@@ -593,6 +829,8 @@
       for(const item of (j.items||[])){ const id=item.snippet?.resourceId?.videoId; if(!id||state.privateList.some(x=>x.video_id===id))continue; state.privateList.push({id:privateItemId(),video_id:id,title:item.snippet?.title||'YouTube video',thumbnail:item.snippet?.thumbnails?.medium?.url||ytThumb(id),selected:false,playlist_id:listId,playlist_title:playlistTitle});added++; }
       pageToken=j.nextPageToken||''; savePrivateList(); renderPrivateList();
     }while(pageToken);
+    const importedItems=state.privateList.filter(x=>x.playlist_id===listId);
+    if(importedItems.length)saveStoredPlaylist(playlistTitle,importedItems);
     notify(added?`Imported ${added} video${added===1?'':'s'} into “${playlistTitle}”`:'No new videos found.','info');
   }
   function uploadPrivate(all){
@@ -806,110 +1044,3 @@
       if(raw!==null){const n=Number(raw);return Number.isFinite(n)&&n>=0?n:0;}
       // Migrate the old one-time-seen flag so existing users get the new 5-view behavior.
       const oldKey=`alamkarok-announcement-seen-${id}`;
-      if(localStorage.getItem(oldKey)!==null){localStorage.removeItem(oldKey);}
-    }catch(_){ }
-    return 0;
-  }
-  function recordAnnouncementView(id){
-    try{localStorage.setItem(announcementViewCountKey(id),String(announcementViewCount(id)+1));}catch(_){ }
-  }
-  async function getActiveAnnouncement(){
-    try{
-      const r=await getClient().from('announcements').select('*').eq('active',true).order('created_at',{ascending:false}).limit(20);
-      if(r.error)return null;
-      return (r.data||[]).find(announcementIsCurrent)||null;
-    }catch(_){return null;}
-  }
-  function closeAnnouncement(id){
-    const el=document.getElementById('announcementOverlay');
-    if(el)el.remove();
-  }
-  function showAnnouncement(a){
-    if(!a||document.getElementById('announcementOverlay'))return;
-    // Show once per page visit, up to 5 visits for each announcement on this browser/device.
-    if(announcementViewCount(a.id)>=5)return;
-    recordAnnouncementView(a.id);
-    const back=document.createElement('div');
-    back.className='announcement-overlay';
-    back.id='announcementOverlay';
-    const image=a.image_url?`<div class="announcement-image-wrap"><img class="announcement-image" src="${esc(a.image_url)}" alt=""></div>`:'';
-    const button=a.button_text&&a.button_url?`<a class="btn primary announcement-button" href="${esc(a.button_url)}" target="_blank" rel="noopener noreferrer">${esc(a.button_text)}</a>`:'';
-    back.innerHTML=`<div class="announcement-modal" role="dialog" aria-modal="true" aria-labelledby="announcementTitle"><button class="announcement-close" id="announcementClose" type="button" aria-label="Close announcement">×</button>${image}<div class="announcement-content"><div class="announcement-kicker">📢 ANNOUNCEMENT</div><h2 id="announcementTitle">${esc(a.title||'Announcement')}</h2>${a.message?`<div class="announcement-message">${esc(a.message).replace(/\n/g,'<br>')}</div>`:''}${button}</div></div>`;
-    document.body.appendChild(back);
-    back.querySelector('#announcementClose').onclick=()=>closeAnnouncement(a.id);
-    back.addEventListener('click',e=>{if(e.target===back)closeAnnouncement(a.id);});
-    const onKey=e=>{if(e.key==='Escape'){closeAnnouncement(a.id);document.removeEventListener('keydown',onKey);}};
-    document.addEventListener('keydown',onKey);
-  }
-  async function loadAnnouncement(){
-    if(location.pathname.replace(/\/+$/, '')==='/admin')return;
-    const a=await getActiveAnnouncement();
-    if(a)showAnnouncement(a);
-  }
-
-  function adminStyles(){return `
-    <style id="adminInlineStyles">
-      .admin-wrap{width:min(980px,100%);padding:20px}.admin-top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:18px}.admin-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(280px,.9fr);gap:16px}.admin-card{padding:18px}.admin-card h1,.admin-card h2{margin:0 0 8px}.admin-form{display:grid;gap:12px}.admin-label{display:grid;gap:6px;font-size:12px;color:#94a2b5;font-weight:700;text-transform:uppercase;letter-spacing:.06em}.admin-textarea{min-height:140px;resize:vertical}.admin-check{display:flex;align-items:center;gap:8px;color:#cbd5e1;font-size:14px}.admin-dates{display:grid;grid-template-columns:1fr 1fr;gap:10px}.admin-actions{display:flex;gap:8px;flex-wrap:wrap}.admin-list{display:grid;gap:10px;margin-top:14px}.admin-item{padding:13px;border:1px solid #243246;background:#0b111a;border-radius:12px}.admin-item-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.admin-item-title{font-weight:750;color:#eef3f9}.admin-item-meta{font-size:11px;color:#718096;margin-top:4px}.admin-item-preview{max-height:110px;max-width:100%;object-fit:cover;border-radius:8px;margin-top:10px}.admin-badge{font-size:11px;padding:4px 7px;border-radius:999px;border:1px solid #294337;color:#78ddb5;background:#10251f}.admin-badge.off{border-color:#47313a;color:#ef9cae;background:#26161c}.admin-empty{color:#718096;font-size:13px;padding:14px 0}.admin-error{color:#ff9cab;background:#28161d;border:1px solid #57303a;padding:10px;border-radius:10px;font-size:13px}.admin-success{color:#75dfb8;background:#10251f;border:1px solid #285342;padding:10px;border-radius:10px;font-size:13px}.admin-login{max-width:430px;margin:8vh auto}.admin-preview{position:relative}.admin-preview .announcement-modal{position:relative;inset:auto;transform:none;margin:0;max-height:none}.admin-preview .announcement-overlay{position:relative;inset:auto;background:none;padding:0}.admin-file{font-size:12px;color:#8290a4}
-      @media(max-width:760px){.admin-grid{grid-template-columns:1fr}.admin-dates{grid-template-columns:1fr}.admin-wrap{padding:14px}.admin-top{align-items:flex-start}.admin-top .btn{white-space:nowrap}}
-    </style>`;}
-  async function adminIsAdmin(){
-    const {data:{session}}=await getClient().auth.getSession();
-    if(!session)return false;
-    const r=await getClient().from('admin_users').select('user_id').eq('user_id',session.user.id).maybeSingle();
-    return !r.error&&!!r.data;
-  }
-  async function renderAdmin(){
-    app.innerHTML=adminStyles()+`<div class="admin-wrap"><div class="admin-top"><div><div class="brand">ALAMKAROK</div><div class="small">Announcement Manager</div></div><button class="btn" id="adminBack">Back to ALAMKAROK</button></div><div id="adminArea"></div></div>`;
-    document.getElementById('adminBack').onclick=()=>{location.href='/';};
-    const area=document.getElementById('adminArea');
-    const {data:{session}}=await getClient().auth.getSession();
-    if(!session){renderAdminLogin(area);return;}
-    if(!(await adminIsAdmin())){area.innerHTML=`<div class="card admin-card"><h1>Access not enabled</h1><p class="sub">This account is signed in, but it is not listed as an ALAMKAROK administrator.</p><button class="btn" id="adminSignOut">Sign out</button></div>`;document.getElementById('adminSignOut').onclick=async()=>{await getClient().auth.signOut();renderAdmin();};return;}
-    renderAdminDashboard(area,session.user);
-  }
-  function renderAdminLogin(area){
-    area.innerHTML=`<div class="card admin-card admin-login"><h1>Admin Login</h1><p class="sub">Sign in to publish ALAMKAROK announcements.</p><div id="adminMsg"></div><form class="admin-form" id="adminLoginForm"><label class="admin-label">Email<input class="input" id="adminEmail" type="email" autocomplete="username" required></label><label class="admin-label">Password<input class="input" id="adminPassword" type="password" autocomplete="current-password" required></label><button class="btn primary" type="submit">Sign In</button></form></div>`;
-    area.querySelector('#adminLoginForm').onsubmit=async e=>{e.preventDefault();const msg=area.querySelector('#adminMsg');msg.innerHTML='';const r=await getClient().auth.signInWithPassword({email:area.querySelector('#adminEmail').value.trim(),password:area.querySelector('#adminPassword').value});if(r.error){msg.innerHTML=`<div class="admin-error">${esc(r.error.message)}</div>`;return;}renderAdmin();};
-  }
-  async function adminAnnouncements(){const r=await getClient().from('announcements').select('*').order('created_at',{ascending:false});return r.error?[]:(r.data||[]);}
-  function adminFormHtml(edit){
-    const a=edit||{};
-    const iso=v=>v?new Date(v).toISOString().slice(0,16):'';
-    return `<form class="admin-form" id="announcementForm"><input type="hidden" id="annId" value="${esc(a.id||'')}"><label class="admin-label">Title<input class="input" id="annTitle" maxlength="120" value="${esc(a.title||'')}" placeholder="🎉 New Feature Available!" required></label><label class="admin-label">Message<textarea class="input admin-textarea" id="annMessage" maxlength="4000" placeholder="Write your announcement...">${esc(a.message||'')}</textarea></label><label class="admin-label">Image <span class="admin-file">optional</span><input class="input" id="annImage" type="file" accept="image/png,image/jpeg,image/webp,image/gif"><input class="input" id="annImageUrl" type="url" value="${esc(a.image_url||'')}" placeholder="Or paste an image URL"><span class="admin-file">${a.image_url?'Current image is set. Uploading a new image replaces it.':''}</span></label><label class="admin-label">Button text <span class="admin-file">optional</span><input class="input" id="annButtonText" maxlength="50" value="${esc(a.button_text||'')}" placeholder="Learn More"></label><label class="admin-label">Button link <span class="admin-file">optional</span><input class="input" id="annButtonUrl" type="url" value="${esc(a.button_url||'')}" placeholder="https://..."></label><div class="admin-dates"><label class="admin-label">Start <input class="input" id="annStart" type="datetime-local" value="${iso(a.starts_at)}"></label><label class="admin-label">Expiry <input class="input" id="annExpiry" type="datetime-local" value="${iso(a.expires_at)}"></label></div><label class="admin-check"><input id="annActive" type="checkbox" ${a.active!==false?'checked':''}> Active</label><div class="admin-actions"><button class="btn primary" type="submit">${a.id?'Update':'Publish'}</button>${a.id?'<button class="btn" type="button" id="annCancel">Cancel Edit</button>':''}</div></form>`;
-  }
-  async function uploadAnnouncementImage(file){
-    if(!file)return null;
-    const ext=(file.name.split('.').pop()||'jpg').toLowerCase().replace(/[^a-z0-9]/g,'')||'jpg';
-    const path=`${crypto.randomUUID()}.${ext}`;
-    const r=await getClient().storage.from('announcement-images').upload(path,file,{upsert:false,contentType:file.type||undefined});
-    if(r.error)throw r.error;
-    return getClient().storage.from('announcement-images').getPublicUrl(path).data.publicUrl;
-  }
-  async function renderAdminDashboard(area,user){
-    let editing=null;
-    const draw=async()=>{
-      const rows=await adminAnnouncements();
-      area.innerHTML=`<div class="admin-grid"><section class="card admin-card"><div class="admin-top"><div><h1>${editing?'Edit Announcement':'New Announcement'}</h1><div class="small">${esc(user.email||'')}</div></div></div><div id="adminFormMsg"></div>${adminFormHtml(editing)}</section><section class="card admin-card"><h2>Published Announcements</h2><div class="small">Active announcements appear to visitors once, until they close them.</div><div class="admin-list">${rows.length?rows.map(a=>{const current=announcementIsCurrent(a);return `<div class="admin-item"><div class="admin-item-head"><div><div class="admin-item-title">${esc(a.title||'Untitled')}</div><div class="admin-item-meta">${a.expires_at?'Expires '+new Date(a.expires_at).toLocaleString():'No expiry'}</div></div><span class="admin-badge ${current?'':'off'}">${current?'ACTIVE':'INACTIVE'}</span></div>${a.message?`<div class="admin-item-meta">${esc(a.message).slice(0,180)}</div>`:''}${a.image_url?`<img class="admin-item-preview" src="${esc(a.image_url)}" alt="">`:''}<div class="admin-actions" style="margin-top:10px"><button class="btn" data-edit="${esc(a.id)}">Edit</button><button class="btn" data-toggle="${esc(a.id)}">${a.active?'Disable':'Enable'}</button><button class="btn" data-delete="${esc(a.id)}">Delete</button></div></div>`}).join(''):'<div class="admin-empty">No announcements yet.</div>'}</div></section></div>`;
-      const form=area.querySelector('#announcementForm');
-      form.onsubmit=async e=>{e.preventDefault();const msg=area.querySelector('#adminFormMsg');msg.innerHTML='';try{let imageUrl=area.querySelector('#annImageUrl').value.trim()||null;const file=area.querySelector('#annImage').files?.[0];if(file)imageUrl=await uploadAnnouncementImage(file);const payload={title:area.querySelector('#annTitle').value.trim(),message:area.querySelector('#annMessage').value, image_url:imageUrl,button_text:area.querySelector('#annButtonText').value.trim()||null,button_url:area.querySelector('#annButtonUrl').value.trim()||null,active:area.querySelector('#annActive').checked,starts_at:area.querySelector('#annStart').value?new Date(area.querySelector('#annStart').value).toISOString():new Date().toISOString(),expires_at:area.querySelector('#annExpiry').value?new Date(area.querySelector('#annExpiry').value).toISOString():null};if(!payload.title)throw new Error('Title is required.');let r;if(editing)r=await getClient().from('announcements').update(payload).eq('id',editing.id);else r=await getClient().from('announcements').insert(payload);if(r.error)throw r.error;editing=null;await draw();}catch(e){msg.innerHTML=`<div class="admin-error">${esc(e.message||String(e))}</div>`;}};
-      area.querySelectorAll('[data-edit]').forEach(b=>b.onclick=async()=>{const rows2=await adminAnnouncements();editing=rows2.find(x=>x.id===b.dataset.edit)||null;await draw();});
-      area.querySelectorAll('[data-toggle]').forEach(b=>b.onclick=async()=>{const rows2=await adminAnnouncements();const a=rows2.find(x=>x.id===b.dataset.toggle);if(!a)return;await getClient().from('announcements').update({active:!a.active}).eq('id',a.id);await draw();});
-      area.querySelectorAll('[data-delete]').forEach(b=>b.onclick=async()=>{if(!confirm('Delete this announcement?'))return;await getClient().from('announcements').delete().eq('id',b.dataset.delete);await draw();});
-      const cancel=area.querySelector('#annCancel');if(cancel)cancel.onclick=()=>{editing=null;draw();};
-    };
-    await draw();
-  }
-
-  window.addEventListener('error',e=>{if(!document.getElementById('app'))return;console.error(e.error||e.message);});
-  window.addEventListener('unhandledrejection',e=>{console.error(e.reason);});
-
-  (async()=>{
-    if(!validConfig() || !window.supabase){renderHome();return;}
-    try{
-      getClient();
-      const params=new URLSearchParams(location.search);
-      if(location.pathname.replace(/\/+$/, '')==='/admin' || params.get('admin')==='1') await renderAdmin();
-      else { const code=params.get('room'); if(code) await joinRoom(code.toUpperCase()); else renderHome(); }
-    }catch(e){errorScreen('ALAMKAROK could not start',e.message||'Unknown startup error','Check config.js and make sure the Supabase URL and publishable key are correct.');}
-  })();
-})();
