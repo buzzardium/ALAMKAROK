@@ -682,7 +682,7 @@
     function onDown(e){
       if(e.button!==undefined&&e.button!==0)return;
       if(e.target.closest('button,input,select,textarea,a'))return;
-      if((e.pointerType==='touch'||e.pointerType==='pen') && (!handle||!e.target.closest('.drag-handle')))return;
+      if(!handle||!e.target.closest('.drag-handle'))return;
       pointerId=e.pointerId;
       startY=e.clientY;
       active=false;
