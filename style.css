@@ -1695,3 +1695,14 @@ body{
     height:40px!important;
   }
 }
+/* LARGE LIST FIX — never cap expanded queue/My List height */
+.main-section .collapsible-body:not(.collapsed){
+  max-height:none!important;
+  height:auto!important;
+  overflow:visible!important;
+}
+.playlist-subbody:not(.collapsed){
+  max-height:none!important;
+  height:auto!important;
+  overflow:visible!important;
+}
