@@ -308,6 +308,12 @@
     channel.on('broadcast',{event:'command'},({payload})=>handleCommandBroadcast(payload))
       .on('broadcast',{event:'queue'},({payload})=>{state.queue=payload.queue||[];if(Number.isFinite(Number(payload.queue_version)))state.queueVersion=Number(payload.queue_version);updateRoomView();})
       .on('broadcast',{event:'people'},({payload})=>{state.people=payload.people||[];updateRoomView();})
+      .on('broadcast',{event:'participant_left'},({payload})=>{
+        const id=payload?.participantId;
+        if(!id)return;
+        state.people=state.people.filter(p=>p.id!==id);
+        updateRoomView();
+      })
       .on('broadcast',{event:'room'},({payload})=>{state.room={...state.room,...payload};if(Number.isFinite(Number(payload?.queue_version)))state.queueVersion=Number(payload.queue_version);saveRoomSession();updateRoomView();})
       .on('broadcast',{event:'chat'},({payload})=>{if(payload?.message) receiveChatMessage(payload.message);})
       .on('broadcast',{event:'points'},({payload})=>{if(payload?.people){state.people=payload.people;updatePeopleUI();}})
@@ -446,7 +452,7 @@
 
     const handle=item.querySelector('.drag-handle');
     let pointerId=null, startY=0, active=false, currentTarget=null;
-    let startTop=0;
+    let startTop=0, ghost=null;
 
     const items=()=>[...container.children].filter(el=>el.matches?.(`[data-drag-type="${type}"]`));
 
@@ -454,9 +460,11 @@
       items().forEach(el=>{
         el.style.transition='';
         el.style.transform='';
+        el.style.visibility='';
         el.classList.remove('drag-over');
       });
       item.classList.remove('dragging');
+      if(ghost){ghost.remove();ghost=null;}
     }
 
     function cleanup(){
@@ -471,6 +479,36 @@
       currentTarget=null;
     }
 
+    function createGhost(){
+      const r=item.getBoundingClientRect();
+      ghost=item.cloneNode(true);
+      ghost.dataset.pointerDragBound='0';
+      ghost.classList.add('drag-ghost');
+      ghost.style.position='fixed';
+      ghost.style.left=r.left+'px';
+      ghost.style.top=r.top+'px';
+      ghost.style.width=r.width+'px';
+      ghost.style.height=r.height+'px';
+      ghost.style.margin='0';
+      ghost.style.pointerEvents='none';
+      ghost.style.zIndex='2147483640';
+      ghost.style.transition='none';
+      ghost.style.transform='translate3d(0,0,0) scale(1.015)';
+      document.body.appendChild(ghost);
+      item.style.visibility='hidden';
+    }
+
+    function animateDrop(target){
+      if(!ghost||!target)return Promise.resolve();
+      const targetRect=target.getBoundingClientRect();
+      const ghostRect=ghost.getBoundingClientRect();
+      const dy=targetRect.top-ghostRect.top;
+      const dx=targetRect.left-ghostRect.left;
+      ghost.style.transition='transform 180ms cubic-bezier(.2,.8,.2,1)';
+      ghost.style.transform=`translate3d(${dx}px,${dy}px,0) scale(1.015)`;
+      return new Promise(resolve=>setTimeout(resolve,190));
+    }
+
     function activate(e){
       if(active)return;
       active=true;
@@ -479,6 +517,7 @@
       startTop=r.top;
       item.classList.add('dragging');
       item.style.transition='none';
+      createGhost();
       try{item.setPointerCapture(pointerId);}catch(_){ }
       if(e.pointerType==='touch'||e.pointerType==='pen')e.preventDefault();
     }
@@ -500,10 +539,10 @@
       const all=items();
       all.forEach(el=>{
         if(el!==item){
-          el.style.transition='transform 150ms cubic-bezier(.2,.8,.2,1)';
+          el.style.transition='transform 180ms cubic-bezier(.2,.8,.2,1)';
           el.style.transform='';
+          el.classList.remove('drag-over');
         }
-        el.classList.remove('drag-over');
       });
       if(!target)return;
       target.classList.add('drag-over');
@@ -522,11 +561,8 @@
       if(e.pointerId!==pointerId)return;
       if(!active)activate(e);
       if(e.pointerType==='touch'||e.pointerType==='pen')e.preventDefault();
-
-      // Keep the dragged row physically under the pointer/finger.
       const dy=e.clientY-startY;
-      item.style.transform=`translate3d(0,${dy}px,0) scale(.992)`;
-
+      if(ghost)ghost.style.transform=`translate3d(0,${dy}px,0) scale(1.015)`;
       const target=findTarget(e.clientY);
       if(target!==currentTarget){
         currentTarget=target;
@@ -540,8 +576,9 @@
       const fromId=item.dataset.dragId;
       const toId=target?.dataset.dragId||null;
       const shouldMove=active&&toId&&toId!==fromId;
+      if(!shouldMove){cleanup();return;}
+      await animateDrop(target);
       cleanup();
-      if(!shouldMove)return;
       if(type==='shared')await reorderQueueByDrop(fromId,toId);
       else reorderPrivateByDrop(fromId,toId);
     }
@@ -551,29 +588,20 @@
     function onDown(e){
       if(e.button!==undefined&&e.button!==0)return;
       if(e.target.closest('button,input,select,textarea,a'))return;
-
-      // On touch/pen, only the explicit drag handle starts sorting.
       if((e.pointerType==='touch'||e.pointerType==='pen') && (!handle||!e.target.closest('.drag-handle')))return;
-
       pointerId=e.pointerId;
       startY=e.clientY;
       active=false;
       currentTarget=null;
       const r=item.getBoundingClientRect();
       startTop=r.top;
-
       document.addEventListener('pointermove',onMove,true);
       document.addEventListener('pointerup',onUp,true);
       document.addEventListener('pointercancel',onCancel,true);
-
-      // Explicit drag handle means the user has asked to drag: don't let the browser scroll.
       if(e.pointerType==='touch'||e.pointerType==='pen'){
         e.preventDefault();
         activate(e);
-      }else{
-        // Mouse drag begins immediately; no speed/6px threshold.
-        activate(e);
-      }
+      }else activate(e);
     }
 
     item.addEventListener('pointerdown',onDown,{passive:false});
@@ -723,8 +751,9 @@
       if(r.error||!r.data)throw r.error||new Error('The host changed before handoff completed.');
       state.room=r.data;savePreviousRoom();
       try{if(state.player&&typeof state.player.stopVideo==='function')state.player.stopVideo();if(state.player&&typeof state.player.destroy==='function')state.player.destroy();}catch(_){}
-      if(state.channel)try{await getClient().removeChannel(state.channel);}catch(_){}
+      if(state.channel)try{await broadcast('participant_left',{participantId:state.me.id,name:state.me.name});}catch(_){}
       if(state.me?.id)await getClient().from('participants').delete().eq('id',state.me.id);
+      if(state.channel)try{await getClient().removeChannel(state.channel);}catch(_){}
       clearRoomSession();closeHostHandoffModal();state.room=null;state.me=null;state.people=[];state.queue=[];state.channel=null;state.player=null;state.playerReady=false;state.isHost=false;state.chatMessages=[];state.privateList=[];state.pendingSwitchSession=null;state.leaving=false;renderHome();notify(target.name+' is now the host. You left the room.','info');return true;
     }catch(e){state.leaving=false;notify(e.message||'Could not transfer host.','error');return false;}
   }
@@ -747,8 +776,9 @@
   async function leaveRoomNow(){
     state.leaving=true;if(state.reconnectTimer){clearTimeout(state.reconnectTimer);state.reconnectTimer=null;}
     try{if(state.player&&typeof state.player.stopVideo==='function')state.player.stopVideo();if(state.player&&typeof state.player.destroy==='function')state.player.destroy();}catch(_){}
-    try{if(state.channel)await getClient().removeChannel(state.channel);}catch(_){}
+    try{if(state.channel)await broadcast('participant_left',{participantId:state.me.id,name:state.me.name});}catch(_){}
     try{if(state.me?.id)await getClient().from('participants').delete().eq('id',state.me.id);}catch(_){}
+    try{if(state.channel)await getClient().removeChannel(state.channel);}catch(_){}
     savePreviousRoom();clearRoomSession();state.room=null;state.me=null;state.people=[];state.queue=[];state.channel=null;state.player=null;state.playerReady=false;state.isHost=false;state.chatMessages=[];state.privateList=[];state.pendingSwitchSession=null;state.leaving=false;renderHome();notify('You left the room.','info');
   }
   async function leaveRoom(){
