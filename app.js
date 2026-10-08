@@ -65,7 +65,7 @@
     back.innerHTML=`<div class="modal center"><div class="brand">ALAMKAROK</div><div class="small">You're already in a room</div><h2>Room ${esc(session.roomCode)}</h2><p class="sub">${target}</p><div class="modalactions"><button class="btn" id="stayRoom">Stay in Room</button><button class="btn primary" id="switchRoom">Switch Room</button></div></div>`;
     document.body.appendChild(back);
     back.querySelector('#stayRoom').onclick=async()=>{back.remove();try{await restoreRoomSession(session);}catch(e){clearRoomSession();renderHome();notify('Your previous room is no longer available.','error');}};
-    back.querySelector('#switchRoom').onclick=async()=>{back.remove();await switchRoomFromPrompt(session);};
+    back.querySelector('#switchRoom').onclick=async()=>{back.remove();await switchRoomFromPrompt(session,requestedCode);};
   }
   async function restoreRoomSession(session){
     const client=getClient();
@@ -78,11 +78,15 @@
     state.room=roomRes.data; state.me=participantRes.data; state.isHost=state.me.user_id===state.room.host_id;
     await enterRoom();
   }
-  async function switchRoomFromPrompt(oldSession){
-    renderHome();
-    const joinBtn=document.getElementById('joinCode');
-    if(joinBtn) joinBtn.dataset.switching='1';
+  async function switchRoomFromPrompt(oldSession,requestedCode){
+    const code=String(requestedCode||'').trim().toUpperCase();
+    if(!/^[A-Z0-9]{5}$/.test(code)){
+      return notify('The scanned room code is invalid.','error');
+    }
+    // Keep the old session until the new room is successfully joined.
+    // registerParticipant() will remove the old participant after the new room is active.
     state.pendingSwitchSession=oldSession;
+    await joinRoom(code);
   }
   async function leaveStoredSessionAfterSuccessfulJoin(oldSession){
     if(!oldSession||!oldSession.participantId)return;
