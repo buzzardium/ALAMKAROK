@@ -607,6 +607,19 @@
     if(state.busy)return false;
     if(!fromId||!toId||fromId===toId)return false;
     const beforeRects=captureDragRects(document.getElementById('queueList'));
+    const previousQueue=state.queue.slice();
+    const previousIndex=Number.isInteger(state.room.current_index)?state.room.current_index:0;
+    const from=state.queue.findIndex(x=>x.id===fromId);
+    const to=state.queue.findIndex(x=>x.id===toId);
+    if(from<0||to<0)return false;
+    const optimistic=state.queue.slice();
+    const [moved]=optimistic.splice(from,1);
+    optimistic.splice(to,0,moved);
+    state.queue=optimistic;
+    const currentIndex=state.room.current_video_id?state.queue.findIndex(x=>x.video_id===state.room.current_video_id):-1;
+    state.room.current_index=currentIndex>=0?currentIndex:0;
+    updateRoomView();
+    requestAnimationFrame(()=>animateListReorder(document.getElementById('queueList'),beforeRects));
     state.busy=true;
     try{
       const r=await getClient().rpc('reorder_queue_item',{
@@ -621,16 +634,18 @@
       if(!Array.isArray(queue))throw new Error('Invalid queue response from server.');
       state.queue=queue;
       state.queueVersion=Number(payload.queue_version||0);
-      const currentIndex=state.room.current_video_id?state.queue.findIndex(x=>x.video_id===state.room.current_video_id):-1;
-      const patch={current_index:currentIndex>=0?currentIndex:0,updated_at:new Date().toISOString(),queue_version:state.queueVersion};
+      const serverCurrentIndex=state.room.current_video_id?state.queue.findIndex(x=>x.video_id===state.room.current_video_id):-1;
+      const patch={current_index:serverCurrentIndex>=0?serverCurrentIndex:0,updated_at:new Date().toISOString(),queue_version:state.queueVersion};
       const rr=await getClient().from('rooms').update(patch).eq('id',state.room.id).select().single();
       if(!rr.error)state.room=rr.data;
       updateRoomView();
-      animateListReorder(document.getElementById('queueList'),beforeRects);
       await broadcast('queue',{queue:state.queue,queue_version:state.queueVersion});
-      if(currentIndex>=0)await broadcast('room',{current_index:currentIndex,queue_version:state.queueVersion});
+      if(serverCurrentIndex>=0)await broadcast('room',{current_index:serverCurrentIndex,queue_version:state.queueVersion});
       return true;
     }catch(e){
+      state.queue=previousQueue;
+      state.room.current_index=previousIndex;
+      updateRoomView();
       const msg=String(e?.message||e||'');
       if(/QUEUE_VERSION_CONFLICT|Queue changed by another user/i.test(msg)){
         await refreshQueue();
@@ -746,7 +761,7 @@
       if(!seen.has(key)){ const g={key,playlistId:x.playlist_id||null,title:x.playlist_title||'Individual Videos',items:[]}; seen.set(key,g);groups.push(g); }
       seen.get(key).items.push({x,i});
     });
-    const itemHtml=({x,i})=>`<div class="qitem private-item" draggable="false" data-drag-type="private" data-drag-id="${esc(x.id)}"><input class="private-check" type="checkbox" data-private-check="${esc(x.id)}" ${x.selected?'checked':''} aria-label="Select ${esc(x.title)}"><div class="qnum drag-handle" title="Drag to reorder">⠿<span>${i+1}</span></div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.playlist_id?'Playlist · ':''}Private · not uploaded</div></div><div class="actions queue-actions"><button class="action-sm private-upload-btn" data-private-upload="${esc(x.id)}" title="Upload this video to Shared Queue" aria-label="Upload this video">↑</button><button class="action-sm move-btn" data-private-up="${esc(x.id)}" ${i===0?'disabled':''}>↑</button><button class="action-sm move-btn" data-private-down="${esc(x.id)}" ${i===state.privateList.length-1?'disabled':''}>↓</button><button class="action-sm danger-sm" data-private-del="${esc(x.id)}">×</button></div></div>`;
+    const itemHtml=({x,i})=>`<div class="qitem private-item" draggable="false" data-drag-type="private" data-drag-id="${esc(x.id)}"><input class="private-check" type="checkbox" data-private-check="${esc(x.id)}" ${x.selected?'checked':''} aria-label="Select ${esc(x.title)}"><div class="qnum drag-handle" title="Drag to reorder">⠿<span>${i+1}</span></div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.playlist_id?'Playlist · ':''}Private · not uploaded</div></div><div class="actions queue-actions"><button class="action-sm private-upload-btn" data-private-upload="${esc(x.id)}" title="Upload this video to Shared Queue" aria-label="Upload this video">Upload</button><button class="action-sm move-btn" data-private-up="${esc(x.id)}" ${i===0?'disabled':''}>↑</button><button class="action-sm move-btn" data-private-down="${esc(x.id)}" ${i===state.privateList.length-1?'disabled':''}>↓</button><button class="action-sm danger-sm" data-private-del="${esc(x.id)}">×</button></div></div>`;
     list.innerHTML=groups.map(g=>{
       if(!g.playlistId) return g.items.map(itemHtml).join('');
       const collapsed=!!state.playlistCollapsed[g.playlistId];
