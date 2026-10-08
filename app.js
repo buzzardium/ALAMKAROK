@@ -443,8 +443,8 @@
 
   function updateVideoListScrollState(){
     const lists=[
-      {el:document.getElementById('queueList'),limit:50},
-      {el:document.getElementById('privateList'),limit:20}
+      {el:document.getElementById('queueList'),limit:10},
+      {el:document.getElementById('privateList'),limit:10}
     ];
     lists.forEach(({el,limit})=>{
       if(!el)return;
