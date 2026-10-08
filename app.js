@@ -1032,7 +1032,7 @@
     const current=idx>=0?state.queue[idx]:null;
     if(!current)return;
     const playedSeconds=finalizePlaybackTiming();
-    if(playedSeconds>=30){
+    if(playedSeconds>30){
       const r=await getClient().from('queue_items').delete().eq('id',current.id);
       if(r.error)throw r.error;
       await refreshQueue();await normalizePositions();await refreshQueue();
