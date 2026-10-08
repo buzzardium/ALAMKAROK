@@ -384,6 +384,26 @@
     loadAnnouncement();
   }
 
+  function updateVideoListScrollState(){
+    const lists=[
+      document.getElementById('queueList'),
+      document.getElementById('privateList')
+    ];
+    lists.forEach(el=>{
+      if(!el)return;
+      el.classList.remove('long-list-scroll');
+      el.style.removeProperty('--list-scroll-height');
+      requestAnimationFrame(()=>{
+        const items=[...el.querySelectorAll('.qitem[data-drag-type]')].filter(item=>item.getBoundingClientRect().height>0);
+        if(items.length<=50)return;
+        const listRect=el.getBoundingClientRect();
+        const last=items[49].getBoundingClientRect();
+        const height=Math.max(220,last.bottom-listRect.top+4);
+        el.style.setProperty('--list-scroll-height',String(Math.ceil(height))+'px');
+        el.classList.add('long-list-scroll');
+      });
+    });
+  }
   function updateRoomView(){
     if(!document.querySelector('.room-screen')){renderRoom();return;}
     const current=state.room.current_video_id,q=state.queue;
@@ -396,6 +416,7 @@
     if(list){list.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>removeItem(b.dataset.del));list.querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>playQueueItem(b.dataset.play));list.querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.up,-1));list.querySelectorAll('[data-down]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.down,1));bindDragAndDrop(document);}
     updateEndPreview();
     renderPrivateList();
+    updateVideoListScrollState();
     updatePeopleUI();
     if(state.isHost&&current)ensureYouTubePlayer();
   }
@@ -827,6 +848,7 @@
     list.querySelectorAll('[data-private-down]').forEach(b=>b.onclick=()=>movePrivate(b.dataset.privateDown,1));
     list.querySelectorAll('[data-private-del]').forEach(b=>b.onclick=()=>deletePrivate(b.dataset.privateDel));
     bindDragAndDrop(document);
+    updateVideoListScrollState();
   }
   function selectAllPrivate(){ const all=state.privateList.length>0 && state.privateList.every(x=>x.selected); state.privateList.forEach(x=>x.selected=!all); savePrivateList(); renderPrivateList(); }
   function movePrivate(id,direction){
