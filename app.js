@@ -437,6 +437,10 @@
 
       <div class="footer">Everyone can add links and control playback. Only the host displays YouTube.</div></div>`;
     bindRoomControls();
+    // Apply the universal 10-video viewport on the initial room render too.
+    // Previously this only happened after a later room update (for example Shuffle).
+    renderPrivateList();
+    updateVideoListScrollState();
     if(state.isHost&&state.room.current_video_id)ensureYouTubePlayer();
     loadAnnouncement();
   }
