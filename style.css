@@ -1665,18 +1665,23 @@ body{
   .qitem.private-item .min0{
     min-width:0!important;
     width:100%!important;
+    max-width:100%!important;
+    overflow:hidden!important;
   }
   .qitem[data-drag-type="shared"] .qtitle,
   .qitem.private-item .qtitle{
+    min-width:0!important;
+    max-width:100%!important;
     font-size:16px!important;
     line-height:1.2!important;
     white-space:normal!important;
-    overflow:visible!important;
+    overflow:hidden!important;
     text-overflow:clip!important;
     display:-webkit-box!important;
     -webkit-box-orient:vertical!important;
     -webkit-line-clamp:2!important;
     max-height:2.4em!important;
+    word-break:break-word!important;
   }
   .qitem[data-drag-type="shared"] .meta,
   .qitem.private-item .meta{
