@@ -1138,25 +1138,43 @@
   }
 
   async function addLink(){if(state.busy)return;const input=document.getElementById('url');const id=ytId(input.value.trim());if(!id)return notify('Enter a valid YouTube link.','error');state.busy=true;try{const playable=await checkVideoEmbeddable(id);if(playable===false){notify('This YouTube video is unavailable or does not allow embedding. It was not added.','error');return;}let title=await videoTitle(id);const pos=state.queue.length?Math.max(...state.queue.map(x=>x.position))+1:0;const r=await getClient().from('queue_items').insert({room_id:state.room.id,video_id:id,title,thumbnail:ytThumb(id),added_by:state.me.id,position:pos}).select().single();if(r.error)throw r.error;input.value='';await refreshQueue();await broadcast('queue',{queue:state.queue});if(state.isHost&&!state.room.current_video_id)await performPlayback('load',id,0,true);notify(playable===null?'Added to Shared Queue (could not pre-check embed permission).':'Added to the shared queue');}catch(e){notify(e.message||'Could not add video','error');}finally{state.busy=false;}}
+  const deletingQueueItems=new Set();
   async function removeItem(id){
-    const item=state.queue.find(x=>x.id===id); if(!item)return;
+    if(deletingQueueItems.has(id))return;
+    const index=state.queue.findIndex(x=>x.id===id);
+    if(index<0)return;
+    const item=state.queue[index];
     const wasCurrent=item.video_id===state.room.current_video_id;
-    const r=await getClient().from('queue_items').delete().eq('id',id);
-    if(r.error)return notify(r.error.message,'error');
-    await refreshQueue(); await normalizePositions(); await refreshQueue();
-    if(wasCurrent){
-      const next=state.queue[0];
-      if(next) await performPlayback('load',next.video_id,0,true);
-      else {
-        const patch={current_video_id:null,current_index:0,is_playing:false,position_seconds:0,updated_at:new Date().toISOString()};
-        const rr=await getClient().from('rooms').update(patch).eq('id',state.room.id).select().single();
-        if(!rr.error)state.room=rr.data;
-        updateRoomView(); await broadcast('room',patch);
-        if(state.isHost&&state.player){try{state.player.stopVideo();}catch(_){} }
+    const previousQueue=state.queue.slice();
+    deletingQueueItems.add(id);
+    state.queue=state.queue.filter(x=>x.id!==id);
+    updateRoomView();
+    try{
+      const r=await getClient().from('queue_items').delete().eq('id',id);
+      if(r.error)throw r.error;
+      for(let i=0;i<state.queue.length;i++){
+        const pr=await getClient().from('queue_items').update({position:i}).eq('id',state.queue[i].id);
+        if(pr.error)throw pr.error;
       }
-    }
-    await broadcast('queue',{queue:state.queue});
-    notify('Video removed');
+      await refreshQueue();
+      if(wasCurrent){
+        const next=state.queue[Math.min(index,state.queue.length-1)]||state.queue[0];
+        if(next)await performPlayback('load',next.video_id,0,true);
+        else{
+          const patch={current_video_id:null,current_index:0,is_playing:false,position_seconds:0,updated_at:new Date().toISOString()};
+          const rr=await getClient().from('rooms').update(patch).eq('id',state.room.id).select().single();
+          if(!rr.error)state.room=rr.data;
+          updateRoomView();await broadcast('room',patch);
+          if(state.isHost&&state.player){try{state.player.stopVideo();}catch(_){}}
+        }
+      }
+      await broadcast('queue',{queue:state.queue});
+      notify('Video removed');
+    }catch(e){
+      state.queue=previousQueue;
+      updateRoomView();
+      notify(e.message||'Could not remove video.','error');
+    }finally{deletingQueueItems.delete(id);}
   }
   async function normalizePositions(){for(let i=0;i<state.queue.length;i++){const r=await getClient().from('queue_items').update({position:i}).eq('id',state.queue[i].id);if(r.error)break;}}
   function resetPlaybackTiming(){state.playbackStartedAt=0;state.playbackPlayedSeconds=0;}
