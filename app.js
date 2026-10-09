@@ -168,7 +168,7 @@
   }
   function toggleListSection(which){ if(which==='private') state.privateCollapsed=!state.privateCollapsed; else state.sharedCollapsed=!state.sharedCollapsed; savePrivateList(); updateListSectionUI(); }
   function updateListSectionUI(){ const p=document.getElementById('privateBody'), q=document.getElementById('sharedBody'); if(p){p.classList.toggle('collapsed',state.privateCollapsed); p.setAttribute('aria-hidden',state.privateCollapsed?'true':'false');} if(q){q.classList.toggle('collapsed',state.sharedCollapsed); q.setAttribute('aria-hidden',state.sharedCollapsed?'true':'false');} document.querySelectorAll('[data-collapse]').forEach(b=>{const c=b.dataset.collapse==='private'?state.privateCollapsed:state.sharedCollapsed;const chev=b.querySelector('.chevron');if(chev)chev.textContent=c?'▼':'▲';b.setAttribute('aria-expanded',c?'false':'true');}); }
-  function togglePlaylistGroup(id){ state.playlistCollapsed[id]=!state.playlistCollapsed[id]; savePrivateList(); renderPrivateList(); }
+  function togglePlaylistGroup(id){ state.playlistCollapsed[id]=!state.playlistCollapsed[id]; savePrivateList(); renderPrivateList(); requestAnimationFrame(()=>requestAnimationFrame(updateVideoListScrollState)); }
   function playlistGroupTitle(id){ const g=state.privateList.find(x=>x.playlist_id===id); return g?.playlist_title||'Imported YouTube Playlist'; }
   function playlistId(value){ try{ const u=new URL(value); return u.hostname.includes('youtube.com')&&u.searchParams.get('list') ? u.searchParams.get('list') : null; }catch(_){ return null; } }
   function privateItemId(){ return 'p-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8); }
