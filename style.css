@@ -1899,3 +1899,72 @@ body{
   .player-column{gap:10px;}
   .end-preview-panel{max-height:34vh;overflow:auto;}
 }
+
+
+/* DESKTOP-FIRST ROOM LAYOUT — visual-only overrides; keep mobile layout intact */
+@media (min-width: 1200px) {
+  .wrap {
+    width: min(1680px, calc(100% - 48px));
+    padding: 24px;
+  }
+  .room-screen {
+    width: 100%;
+    max-width: none;
+    margin-inline: auto;
+  }
+  .roomgrid {
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+    gap: 24px;
+    align-items: start;
+  }
+  .player-column {
+    min-width: 0;
+  }
+  .player-card {
+    padding: 18px;
+  }
+  .room-sidebar .card {
+    padding: 18px;
+  }
+  .main-section {
+    padding: 22px !important;
+  }
+  .main-section .section-label {
+    font-size: 24px !important;
+  }
+  .qitem {
+    grid-template-columns: 38px 72px minmax(0, 1fr) auto;
+    gap: 14px;
+    padding: 12px;
+  }
+  .thumb {
+    width: 72px;
+    height: 50px;
+  }
+  .qtitle {
+    font-size: 15px;
+  }
+  .meta {
+    font-size: 12px;
+  }
+  .private-item {
+    grid-template-columns: 30px 36px 72px minmax(0, 1fr) auto;
+  }
+}
+@media (min-width: 1600px) {
+  .wrap {
+    width: min(1840px, calc(100% - 64px));
+    padding: 28px;
+  }
+  .roomgrid {
+    grid-template-columns: minmax(0, 1fr) 390px;
+    gap: 28px;
+  }
+  .player-card,
+  .room-sidebar .card {
+    padding: 22px;
+  }
+  .main-section {
+    padding: 26px !important;
+  }
+}
