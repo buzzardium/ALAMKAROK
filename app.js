@@ -1050,6 +1050,7 @@
     back.querySelectorAll('[data-host-person]').forEach(b=>b.onclick=()=>completeHostHandoff(others.find(p=>p.id===b.dataset.hostPerson)));
   }
   let hostLeavePromptTimer=null;
+  let hostTakeoverDismissedId=null;
   let hostPresenceMissingSince=0;
   let hostPresenceMissingId=null;
   async function checkHostPresence(){
@@ -1059,6 +1060,7 @@
     const presence=state.channel.presenceState?.()||{};
     const hostPresent=Object.values(presence).flat().some(p=>p&&p.userId===hostId);
     if(hostPresent){
+      hostTakeoverDismissedId=null;
       hostPresenceMissingSince=0;
       hostPresenceMissingId=null;
       return;
@@ -1096,13 +1098,13 @@
   }
   function closeHostTakeoverModal(){const el=document.getElementById('hostTakeoverModal');if(el)el.remove();}
   function showHostTakeoverModal(departedHostId){
-    if(state.isHost||!state.room||!state.me||document.getElementById('hostTakeoverModal'))return;
+    if(state.isHost||!state.room||!state.me||hostTakeoverDismissedId===departedHostId||document.getElementById('hostTakeoverModal'))return;
     const back=document.createElement('div');
     back.className='modalback host-handoff-overlay';
     back.id='hostTakeoverModal';
     back.innerHTML=`<div class="modal host-handoff-modal"><div class="brand">ALAMKAROK</div><div class="small">Room ${esc(state.room.code)}</div><h2>Host Disconnected</h2><p class="sub">The host appears to have left the room. Become the new host to keep playback controls available?</p><div class="modalactions"><button class="btn" id="hostTakeoverLater" type="button">Not Now</button><button class="btn primary" id="hostTakeoverNow" type="button">Become Host</button></div><div class="small" id="hostTakeoverStatus" aria-live="polite"></div></div>`;
     document.body.appendChild(back);
-    back.querySelector('#hostTakeoverLater').onclick=closeHostTakeoverModal;
+    back.querySelector('#hostTakeoverLater').onclick=()=>{hostTakeoverDismissedId=departedHostId;closeHostTakeoverModal();};
     back.querySelector('#hostTakeoverNow').onclick=()=>takeOverDisconnectedHost(departedHostId);
   }
   async function takeOverDisconnectedHost(departedHostId){
