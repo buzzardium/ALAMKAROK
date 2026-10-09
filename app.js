@@ -1473,7 +1473,9 @@
     const holder=document.getElementById('player');
     if(!holder)return;
     if(state.playerReady&&state.player)return;
-    if(state.player){try{state.player.destroy();}catch(_){ }state.player=null;state.playerReady=false;}
+    // If a YouTube player is still initializing, keep it alive. Recreating it here
+    // can discard a participant's Play command during the first-load race.
+    if(state.player&&!state.playerReady)return;
     const placeholder=document.getElementById('playerPlaceholder');
     if(placeholder)placeholder.textContent='Loading YouTube player…';
     try{
@@ -1486,8 +1488,11 @@
             state.playerReady=true;
             try{applyHostVolume(state.hostVolume);}catch(_){}
             const p=Number(state.room.position_seconds||0);
-            if(state.room.is_playing)state.player.loadVideoById({videoId:state.room.current_video_id,startSeconds:p});
-            else state.player.cueVideoById({videoId:state.room.current_video_id,startSeconds:p});
+            const videoId=state.room.current_video_id;
+            // Read the latest room intent when the player becomes ready, rather than
+            // losing a remote Play/Pause command that arrived during initialization.
+            if(state.room.is_playing)state.player.loadVideoById({videoId,startSeconds:p});
+            else state.player.cueVideoById({videoId,startSeconds:p});
           },
           onStateChange:async e=>{
             if(e.data===YT.PlayerState.ENDED){showEndPreview();await advanceAfterEnd();}
@@ -1524,6 +1529,9 @@
     }catch(e){notify('Could not load this YouTube video.','error');}
   }
   function applyLocalPlay(play){
+    // Persist the intended state before ensuring the player. If a participant's
+    // command arrives before YouTube is ready, onReady will read state.room.is_playing
+    // and load/cue the current video accordingly instead of dropping the command.
     if(!state.playerReady||!state.player){ensureYouTubePlayer();return;}
     try{play?state.player.playVideo():state.player.pauseVideo();}catch(e){notify('Could not control the YouTube player.','error');}
   }
