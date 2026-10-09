@@ -954,10 +954,10 @@
     }finally{state.busy=false;}
   }
   async function reorderQueueByDrop(fromId,toId){
-    const moved=state.queue.find(x=>x.id===fromId);
-    const wasCurrent=moved?.video_id===state.room?.current_video_id;
+    const previousTopVideo=state.queue[0]?.video_id;
     const ok=await reorderSharedQueue(fromId,toId);
-    if(ok&&state.queue[0]?.id===fromId&&!wasCurrent)await playQueueItem(fromId);
+    const nextTop=state.queue[0];
+    if(ok&&nextTop&&nextTop.video_id!==previousTopVideo&&nextTop.video_id!==state.room?.current_video_id)await playQueueItem(nextTop.id);
     return ok;
   }
 
@@ -970,10 +970,11 @@
     const list=document.getElementById('queueList');
     const before=captureDragRects(list);
     const previousQueue=state.queue.slice();
-    const wasCurrent=state.queue[index]?.video_id===state.room?.current_video_id;
+    const previousTopVideo=state.queue[0]?.video_id;
     [state.queue[index],state.queue[targetIndex]]=[state.queue[targetIndex],state.queue[index]];
     const ok=await reorderSharedQueue(id,targetId,{beforeRects:before,previousQueue,optimisticApplied:true});
-    if(ok&&state.queue[0]?.id===id&&!wasCurrent)await playQueueItem(id);
+    const nextTop=state.queue[0];
+    if(ok&&nextTop&&nextTop.video_id!==previousTopVideo&&nextTop.video_id!==state.room?.current_video_id)await playQueueItem(nextTop.id);
   }
 
   async function shuffleQueue(){
