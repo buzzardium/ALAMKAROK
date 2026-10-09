@@ -772,8 +772,9 @@
     item.dataset.pointerDragBound='1';
 
     const handle=item.querySelector('.drag-handle');
-    let pointerId=null, startY=0, active=false, currentTarget=null;
+    let pointerId=null, startY=0, startX=0, active=false, currentTarget=null;
     let startTop=0, ghost=null;
+    const DRAG_START_THRESHOLD=8;
 
     const items=()=>[...container.children].filter(el=>el.matches?.(`[data-drag-type="${type}"]`));
 
@@ -798,6 +799,9 @@
       pointerId=null;
       active=false;
       currentTarget=null;
+      // A drag can temporarily hide a row while the list is being measured.
+      // Recalculate the viewport after cleanup so a playlist never stays shortened.
+      requestAnimationFrame(()=>requestAnimationFrame(updateVideoListScrollState));
     }
 
     function createGhost(){
@@ -880,7 +884,11 @@
 
     function onMove(e){
       if(e.pointerId!==pointerId)return;
-      if(!active)activate(e);
+      if(!active){
+        const distance=Math.hypot(e.clientX-startX,e.clientY-startY);
+        if(distance<DRAG_START_THRESHOLD)return;
+        activate(e);
+      }
       if(e.pointerType==='touch'||e.pointerType==='pen')e.preventDefault();
       const dy=e.clientY-startY;
       if(ghost)ghost.style.transform=`translate3d(0,${dy}px,0) scale(1.015)`;
@@ -912,6 +920,7 @@
       if(!handle||!e.target.closest('.drag-handle'))return;
       pointerId=e.pointerId;
       startY=e.clientY;
+      startX=e.clientX;
       active=false;
       currentTarget=null;
       const r=item.getBoundingClientRect();
@@ -919,10 +928,8 @@
       document.addEventListener('pointermove',onMove,true);
       document.addEventListener('pointerup',onUp,true);
       document.addEventListener('pointercancel',onCancel,true);
-      if(e.pointerType==='touch'||e.pointerType==='pen'){
-        e.preventDefault();
-        activate(e);
-      }else activate(e);
+      // Don't start a drag on a simple tap or tiny accidental movement of the handle.
+      // Wait until the pointer has moved intentionally before hiding the source row.
     }
 
     item.addEventListener('pointerdown',onDown,{passive:false});
