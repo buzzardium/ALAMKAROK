@@ -473,7 +473,7 @@
       .on('broadcast',{event:'points'},({payload})=>{if(payload?.people){state.people=payload.people;updatePeopleUI();}})
       .on('postgres_changes',{event:'*',schema:'public',table:'participants',filter:`room_id=eq.${state.room.id}`},refreshPeople)
       .on('postgres_changes',{event:'*',schema:'public',table:'chat_messages',filter:`room_id=eq.${state.room.id}`},refreshChatMessages)
-      .on('postgres_changes',{event:'*',schema:'public',table:'queue_items',filter:`room_id=eq.${state.room.id}`},refreshQueue)
+      .on('postgres_changes',{event:'*',schema:'public',table:'queue_items',filter:`room_id=eq.${state.room.id}`},scheduleQueueRefresh)
       .on('postgres_changes',{event:'UPDATE',schema:'public',table:'rooms',filter:`id=eq.${state.room.id}`},refreshRoom)
       .subscribe(async status=>{
         if(status==='SUBSCRIBED'){
@@ -537,12 +537,27 @@
       else notify('Points could not be given. Apply the song-points database migration, then try again.','error');
     }
   }
-  async function refreshQueue(){const r=await getClient().from('queue_items').select('*').eq('room_id',state.room.id).order('position',{ascending:true});if(!r.error){state.queue=r.data||[];updateRoomView();}}
+  let queueRefreshTimer=null;
+  let queueRefreshInFlight=false;
+  let renderedQueueSignature=null;
+  function scheduleQueueRefresh(){
+    if(queueRefreshTimer)clearTimeout(queueRefreshTimer);
+    queueRefreshTimer=setTimeout(()=>{queueRefreshTimer=null;refreshQueue();},140);
+  }
+  async function refreshQueue(){
+    if(queueRefreshInFlight)return;
+    queueRefreshInFlight=true;
+    try{
+      const r=await getClient().from('queue_items').select('*').eq('room_id',state.room.id).order('position',{ascending:true});
+      if(!r.error){state.queue=r.data||[];updateRoomView();}
+    }finally{queueRefreshInFlight=false;}
+  }
   async function refreshRoom(){const r=await getClient().from('rooms').select('*').eq('id',state.room.id).single();if(!r.error){const wasHost=!!state.isHost;state.room=r.data;state.queueVersion=Number(r.data.queue_version||0);state.isHost=!!state.me&&state.me.user_id===state.room.host_id;updateRoomView();if(wasHost!==state.isHost){if(!state.isHost){try{if(state.player&&typeof state.player.stopVideo==='function')state.player.stopVideo();if(state.player&&typeof state.player.destroy==='function')state.player.destroy();}catch(_){}state.player=null;state.playerReady=false;}else if(state.room.current_video_id)loadYouTubeAPI();}else if(state.isHost&&state.room.current_video_id)ensureYouTubePlayer();saveRoomSession();}}
 
   async function broadcast(event,payload){if(state.channel) await state.channel.send({type:'broadcast',event,payload});}
 
   function renderRoom(){
+    renderedQueueSignature=null;
     const current=state.room.current_video_id;const q=state.queue;
     loadStoredHostVolume();
     app.innerHTML=`<div class="wrap room-screen"><div class="top"><div><div class="brand">ALAMKAROK</div><div class="small">Room <b>${esc(state.room.code)}</b> · <span id="peopleCount">${state.people.length}</span> people</div></div><div class="actions"><span class="badge"><span class="dot" style="background:${esc(state.me.color)}"></span>${esc(state.me.name)}</span><button class="btn" id="showQr">QR</button><button class="btn danger-sm" id="leaveRoom" type="button">Leave Room</button></div></div>
@@ -619,8 +634,16 @@
     const stateEl=document.getElementById('playState');if(stateEl)stateEl.textContent=`${state.room.is_playing?'Playing':'Paused'} · ${current?'Video selected':'No video selected'}`;
     const play=document.getElementById('play');if(play)play.textContent=state.room.is_playing?'❚❚':'▶';
     const list=document.getElementById('queueList');
-    if(list)list.innerHTML=q.length?q.map((x,i)=>`<div class="qitem ${x.video_id===current?'now':''}" draggable="false" data-drag-type="shared" data-drag-id="${esc(x.id)}"><div class="qnum drag-handle" title="Drag to reorder">⠿<span>${i+1}</span></div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.video_id===current?'NOW PLAYING · ':''}${esc(personName(x.added_by))}</div></div><div class="actions queue-actions"><button class="action-sm move-btn" data-up="${esc(x.id)}" title="Move up" ${i===0?'disabled':''}>↑</button><button class="action-sm move-btn" data-down="${esc(x.id)}" title="Move down" ${i===q.length-1?'disabled':''}>↓</button>${x.video_id!==current||state.isHost?`<button class="action-sm" data-play="${esc(x.id)}">Play</button>`:''}<button class="action-sm danger-sm" data-del="${esc(x.id)}">×</button></div></div>`).join(''):'<div class="empty">No videos yet. Add the first YouTube link.</div>';
-    if(list){list.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>removeItem(b.dataset.del));list.querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>playQueueItem(b.dataset.play));list.querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.up,-1));list.querySelectorAll('[data-down]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.down,1));bindDragAndDrop(document);}
+    const queueSignature=JSON.stringify({current,host:!!state.isHost,items:q.map(x=>[x.id,x.video_id,x.title,x.thumbnail,x.added_by,x.position])});
+    if(list&&queueSignature!==renderedQueueSignature){
+      list.innerHTML=q.length?q.map((x,i)=>`<div class="qitem ${x.video_id===current?'now':''}" draggable="false" data-drag-type="shared" data-drag-id="${esc(x.id)}"><div class="qnum drag-handle" title="Drag to reorder">⠿<span>${i+1}</span></div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.video_id===current?'NOW PLAYING · ':''}${esc(personName(x.added_by))}</div></div><div class="actions queue-actions"><button class="action-sm move-btn" data-up="${esc(x.id)}" title="Move up" ${i===0?'disabled':''}>↑</button><button class="action-sm move-btn" data-down="${esc(x.id)}" title="Move down" ${i===q.length-1?'disabled':''}>↓</button>${x.video_id!==current||state.isHost?`<button class="action-sm" data-play="${esc(x.id)}">Play</button>`:''}<button class="action-sm danger-sm" data-del="${esc(x.id)}">×</button></div></div>`).join(''):'<div class="empty">No videos yet. Add the first YouTube link.</div>';
+      renderedQueueSignature=queueSignature;
+      list.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>removeItem(b.dataset.del));
+      list.querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>playQueueItem(b.dataset.play));
+      list.querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.up,-1));
+      list.querySelectorAll('[data-down]').forEach(b=>b.onclick=()=>moveQueueItem(b.dataset.down,1));
+      bindDragAndDrop(document);
+    }
     updateEndPreview();
     renderPrivateList();
     updateVideoListScrollState();
