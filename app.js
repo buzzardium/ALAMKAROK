@@ -3,7 +3,7 @@
   'use strict';
   // Canonicalize all Vercel deployment URLs to the stable public production domain.
   // Preserve room codes, paths, and any other query/hash data when redirecting.
-  if (location.hostname.endsWith('.vercel.app') && location.hostname !== 'alamkarok.vercel.app') {
+  if (location.hostname.endsWith('.vercel.app') && location.hostname !== 'alamkarok.vercel.app' && new URLSearchParams(location.search).get('preview') !== '1') {
     const canonical = new URL(location.href);
     canonical.protocol = 'https:';
     canonical.hostname = 'alamkarok.vercel.app';
@@ -16,7 +16,7 @@
   const colors = ['#9b5cff','#28a8ff','#18c9a0','#ff9d2e','#ff4f5f','#f1d21b','#ef67c7','#7bd66f','#54d8e8','#ff6f9c'];
   const state = {
     room:null, me:null, people:[], queue:[], isHost:false, channel:null,
-    player:null, playerReady:false, ytReady:false, ytLoading:false, currentPosition:0, playbackStartedAt:0, playbackPlayedSeconds:0, hostVolume:80, busy:false, pendingSwitchSession:null, privateList:[], privateBusy:false, privateCollapsed:false, sharedCollapsed:false, playlistCollapsed:{}, queueVersion:0, chatMessages:[], chatLoading:false, pointsReady:false, pointVotes:[], pointVoteVideoId:null, pointVoteBusy:false, endPreviewItems:null, drag:{type:null,id:null}, reconnectTimer:null, reconnecting:false, leaving:false
+    player:null, playerReady:false, ytReady:false, ytLoading:false, currentPosition:0, playbackStartedAt:0, playbackPlayedSeconds:0, hostVolume:80, busy:false, pendingSwitchSession:null, privateList:[], privateBusy:false, privateCollapsed:false, sharedCollapsed:false, playlistCollapsed:{}, queueVersion:0, chatMessages:[], chatLoading:false, pointsReady:false, pointVotes:[], pointVoteVideoId:null, pointVoteBusy:false, endPreviewItems:null, drag:{type:null,id:null}, reconnectTimer:null, reconnecting:false, leaving:false, hostPresenceMonitor:null
   };
 
   function esc(v){ return String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -472,6 +472,7 @@
       .on('broadcast',{event:'chat'},({payload})=>{if(payload?.message) receiveChatMessage(payload.message);})
       .on('broadcast',{event:'points'},({payload})=>{if(payload?.people){state.people=payload.people;updatePeopleUI();}})
       .on('presence',{event:'leave'},({leftPresences})=>handleHostPresenceLeave(leftPresences))
+      .on('presence',{event:'sync'},()=>checkHostPresence())
       .on('postgres_changes',{event:'*',schema:'public',table:'participants',filter:`room_id=eq.${state.room.id}`},refreshPeople)
       .on('postgres_changes',{event:'*',schema:'public',table:'chat_messages',filter:`room_id=eq.${state.room.id}`},refreshChatMessages)
       .on('postgres_changes',{event:'*',schema:'public',table:'queue_items',filter:`room_id=eq.${state.room.id}`},scheduleQueueRefresh)
@@ -481,6 +482,8 @@
           try{
             await channel.track({participantId:state.me.id,userId:state.me.user_id,name:state.me.name});
           }catch(_){}
+          if(state.hostPresenceMonitor)clearInterval(state.hostPresenceMonitor);
+          state.hostPresenceMonitor=setInterval(checkHostPresence,4000);
           try{
             await recoverRoomState();
           }catch(e){
@@ -1047,6 +1050,31 @@
     back.querySelectorAll('[data-host-person]').forEach(b=>b.onclick=()=>completeHostHandoff(others.find(p=>p.id===b.dataset.hostPerson)));
   }
   let hostLeavePromptTimer=null;
+  let hostPresenceMissingSince=0;
+  let hostPresenceMissingId=null;
+  async function checkHostPresence(){
+    if(state.leaving||state.isHost||!state.room||!state.me||!state.channel)return;
+    const hostId=state.room.host_id;
+    if(!hostId)return;
+    const presence=state.channel.presenceState?.()||{};
+    const hostPresent=Object.values(presence).flat().some(p=>p&&p.userId===hostId);
+    if(hostPresent){
+      hostPresenceMissingSince=0;
+      hostPresenceMissingId=null;
+      return;
+    }
+    if(hostPresenceMissingId!==hostId){hostPresenceMissingId=hostId;hostPresenceMissingSince=Date.now();return;}
+    if(!hostPresenceMissingSince||Date.now()-hostPresenceMissingSince<7000)return;
+    try{
+      const r=await getClient().from('rooms').select('*').eq('id',state.room.id).single();
+      if(r.error||!r.data||r.data.host_id!==hostId)return;
+      state.room=r.data;
+      const latestPresence=state.channel?.presenceState?.()||{};
+      const returned=Object.values(latestPresence).flat().some(p=>p&&p.userId===hostId);
+      if(!returned)showHostTakeoverModal(hostId);
+    }catch(_){}
+    hostPresenceMissingSince=0;
+  }
   async function handleHostPresenceLeave(leftPresences){
     if(state.leaving||state.isHost||!state.room||!state.me||!Array.isArray(leftPresences))return;
     const departedHostId=state.room.host_id;
@@ -1105,7 +1133,7 @@
     }
   }
   async function leaveRoomNow(){
-    state.leaving=true;if(state.reconnectTimer){clearTimeout(state.reconnectTimer);state.reconnectTimer=null;}
+    state.leaving=true;if(state.hostPresenceMonitor){clearInterval(state.hostPresenceMonitor);state.hostPresenceMonitor=null;}if(hostLeavePromptTimer){clearTimeout(hostLeavePromptTimer);hostLeavePromptTimer=null;}if(state.reconnectTimer){clearTimeout(state.reconnectTimer);state.reconnectTimer=null;}
     try{if(state.player&&typeof state.player.stopVideo==='function')state.player.stopVideo();if(state.player&&typeof state.player.destroy==='function')state.player.destroy();}catch(_){}
     try{if(state.channel)await broadcast('participant_left',{participantId:state.me.id,name:state.me.name});}catch(_){}
     try{if(state.me?.id)await getClient().from('participants').delete().eq('id',state.me.id);}catch(_){}
