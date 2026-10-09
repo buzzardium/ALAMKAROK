@@ -493,7 +493,7 @@
     app.innerHTML=`<div class="wrap room-screen"><div class="top"><div><div class="brand">ALAMKAROK</div><div class="small">Room <b>${esc(state.room.code)}</b> · <span id="peopleCount">${state.people.length}</span> people</div></div><div class="actions"><span class="badge"><span class="dot" style="background:${esc(state.me.color)}"></span>${esc(state.me.name)}</span><button class="btn" id="showQr">QR</button><button class="btn danger-sm" id="leaveRoom" type="button">Leave Room</button></div></div>
       <div class="roomgrid">
         <section class="player-column">
-          <div class="card player-card"><div class="player player-shell" id="playerShell"><div id="player" class="playerbox"><div class="playerplaceholder" id="playerPlaceholder">${state.isHost?(current?'Loading YouTube player…':'Add a YouTube video to start playback.'):'Host is playing the video on their phone'}</div></div>${state.isHost?`<button class="fullscreen-btn" id="fullscreenBtn" type="button" title="Fullscreen" aria-label="Fullscreen">⛶</button>`:''}</div><div class="end-preview" id="endPreview" aria-hidden="true"><button class="end-preview-tab" id="endPreviewTab" type="button" aria-expanded="false"><span>NEXT UP</span><span class="end-preview-tab-chevron">⌃</span></button><div class="end-preview-panel"><div class="end-preview-list" id="endPreviewList"></div><div class="end-preview-count" id="endPreviewCount"></div></div></div><div class="controls"><button class="control" id="prev" title="Previous">⏮</button><button class="control main" id="play" title="Play/Pause">${state.room.is_playing?'❚❚':'▶'}</button><button class="control" id="next" title="Next">⏭</button></div><div class="volume-control"><span>🔊</span><input id="volume" class="range" type="range" min="0" max="100" value="${state.hostVolume}" aria-label="Party volume"><span id="volumeValue">${state.hostVolume}%</span></div><div class="small center" id="playState">${state.room.is_playing?'Playing':'Paused'} · ${current?'Video selected':'No video selected'}</div></div>
+          <div class="card player-card"><div class="player player-shell" id="playerShell"><div id="player" class="playerbox"><div class="playerplaceholder" id="playerPlaceholder">${state.isHost?(current?'Loading YouTube player…':'Add a YouTube video to start playback.'):'Host is playing the video on their phone'}</div></div>${state.isHost?`<button class="fullscreen-btn" id="fullscreenBtn" type="button" title="Fullscreen" aria-label="Fullscreen">⛶</button>`:''}</div><div class="end-preview" id="endPreview" aria-hidden="true"><button class="end-preview-tab" id="endPreviewTab" type="button" aria-expanded="false"><span>NEXT UP</span><span class="end-preview-tab-chevron">⌃</span></button><div class="end-preview-panel"><div class="end-preview-current"><div class="end-preview-section-label">CURRENTLY PLAYING</div><div class="end-preview-current-title" id="endPreviewCurrentTitle">Nothing playing</div></div><div class="end-preview-upcoming"><div class="end-preview-section-label">NEXT UP</div><div class="end-preview-list" id="endPreviewList"></div><div class="end-preview-count" id="endPreviewCount"></div></div></div></div><div class="controls"><button class="control" id="prev" title="Previous">⏮</button><button class="control main" id="play" title="Play/Pause">${state.room.is_playing?'❚❚':'▶'}</button><button class="control" id="next" title="Next">⏭</button></div><div class="volume-control"><span>🔊</span><input id="volume" class="range" type="range" min="0" max="100" value="${state.hostVolume}" aria-label="Party volume"><span id="volumeValue">${state.hostVolume}%</span></div><div class="small center" id="playState">${state.room.is_playing?'Playing':'Paused'} · ${current?'Video selected':'No video selected'}</div></div>
         </section>
         <aside class="room-sidebar"><div class="card people-chat-card"><div class="section-title"><h2>People in Room</h2><span class="badge">${state.isHost?'HOST':'GUEST'}</span></div><div class="people" id="peopleList">${renderPeopleHtml()}</div><div class="room-chat"><div class="chat-title"><span>💬 Room Chat</span><span class="small">Give ⭐ points</span></div><div class="chat-messages" id="roomChatMessages"></div><div class="chat-emoji-row">${['😂','❤️','🔥','👏','🎤','🎉','👍','😎'].map(e=>`<button type="button" class="emoji-btn" data-emoji="${e}">${e}</button>`).join('')}</div><div class="chat-compose"><input class="input" id="roomChatInput" maxlength="240" placeholder="Message the room…" autocomplete="off"><button class="btn primary" id="roomChatSend">Send</button></div></div></div></aside>
       </div>
@@ -1241,12 +1241,15 @@
     return idx>=0?state.queue.slice(idx+1):state.queue.slice(0);
   }
   function updateEndPreview(){
+    const currentTitle=document.getElementById('endPreviewCurrentTitle');
     const list=document.getElementById('endPreviewList');
     const count=document.getElementById('endPreviewCount');
-    if(!list||!count)return;
-    const remaining=Array.isArray(state.endPreviewItems)?state.endPreviewItems:getEndPreviewItems();
+    if(!currentTitle||!list||!count)return;
+    const current=state.queue.find(x=>x.video_id===state.room?.current_video_id);
+    currentTitle.textContent=current?(current.title||'YouTube video'):'Nothing playing';
+    const remaining=getEndPreviewItems();
     list.innerHTML=remaining.slice(0,8).map((x,i)=>`<div class="end-preview-item"><span>${i+1}</span><span>${esc(x.title||'YouTube video')}</span></div>`).join('');
-    count.textContent=remaining.length===0?'Nothing remaining':`${remaining.length} remaining`;
+    count.textContent=remaining.length===0?'No upcoming songs':`${remaining.length} remaining`;
   }
   function setEndPreviewOpen(open,autoClose=false){
     const panel=document.getElementById('endPreview');
@@ -1259,7 +1262,6 @@
     if(open&&autoClose)endPreviewTimer=setTimeout(()=>setEndPreviewOpen(false),25000);
   }
   function showEndPreview(){
-    state.endPreviewItems=getEndPreviewItems().slice();
     updateEndPreview();
     setEndPreviewOpen(true,true);
   }

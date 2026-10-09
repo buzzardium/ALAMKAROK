@@ -23,6 +23,10 @@
 .end-preview{position:absolute;top:3.5%;right:3.5%;width:min(33%,360px);max-height:78%;padding:12px 14px;border-radius:12px;background:rgba(7,12,22,.72);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.10);z-index:4;color:#fff;opacity:0;transform:translateY(-6px);pointer-events:none;transition:opacity .45s ease,transform .45s ease}
 .end-preview.show{opacity:1;transform:translateY(0)}
 .end-preview-title{font-size:10px;letter-spacing:.16em;color:#aab7ca;margin-bottom:7px;font-weight:700}
+.end-preview-current{padding-bottom:16px;margin-bottom:16px;border-bottom:1px solid rgba(255,255,255,.12)}
+.end-preview-section-label{font-size:10px;letter-spacing:.14em;font-weight:800;color:#91a4bf;margin-bottom:7px}
+.end-preview-current-title{font-size:13px;line-height:1.4;font-weight:700;color:#fff;overflow-wrap:anywhere}
+.end-preview-upcoming{padding-top:1px}
 .end-preview-list{display:grid;gap:5px}
 .end-preview-item{display:grid;grid-template-columns:18px 1fr;gap:6px;align-items:center;font-size:12px;line-height:1.25;color:#edf2f8}
 .end-preview-item span:first-child{color:#8492a7;font-size:10px;text-align:right}
