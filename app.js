@@ -1322,9 +1322,26 @@
     if(!state.isHost)return;
     if(payload.action==='play'||payload.action==='pause'){await performPlayback(payload.action,null,currentTime(),payload.action==='play');return;}
     if(payload.action==='load'&&payload.videoId){
-      if(payload.videoId!==state.room.current_video_id)await moveCurrentForInterruption();
-      await refreshQueue();
-      await performPlayback('load',payload.videoId,0,true);return;
+      const requestedId=payload.videoId;
+      const queuedBefore=state.queue.some(x=>x.video_id===requestedId);
+      if(!queuedBefore){notify('That video is no longer in Shared Queue.','error');await refreshQueue();return;}
+      if(requestedId!==state.room.current_video_id){
+        await moveCurrentForInterruption();
+        await refreshQueue();
+        const selected=state.queue.find(x=>x.video_id===requestedId);
+        if(!selected){notify('That video was removed from Shared Queue.','error');return;}
+        // Participant and host Play requests follow the same rule: selected song goes to top.
+        if(state.queue[0]?.id!==selected.id){
+          const moved=await reorderSharedQueue(selected.id,state.queue[0].id);
+          if(!moved){await refreshQueue();notify('Queue changed while selecting that song. Please press Play again.','error');return;}
+          await refreshQueue();
+        }
+      }
+      const selected=state.queue.find(x=>x.video_id===requestedId);
+      if(!selected){notify('That video is no longer in Shared Queue.','error');return;}
+      resetPlaybackTiming();
+      await performPlayback('load',selected.video_id,0,true);
+      return;
     }
     if(payload.action!=='next'&&payload.action!=='previous')return;
     const currentId=state.room?.current_video_id;
