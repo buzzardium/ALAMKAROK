@@ -11,6 +11,67 @@
     location.replace(canonical.toString());
     return;
   }
+  // Optional Android/Google TV remote-navigation mode: open the site with ?tv=1.
+  const tvMode = new URLSearchParams(location.search).get('tv') === '1';
+  if (tvMode) document.documentElement.classList.add('tv-mode');
+
+  function installTvRemoteNavigation(){
+    if(!tvMode || window.__alamkarokTvKeysInstalled)return;
+    window.__alamkarokTvKeysInstalled=true;
+    const selector='button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[role="button"],[tabindex]:not([tabindex="-1"])';
+    function candidates(){
+      return [...document.querySelectorAll(selector)].filter(el=>{
+        if(el.closest('[hidden],[aria-hidden="true"],[inert]'))return false;
+        const r=el.getBoundingClientRect(),s=getComputedStyle(el);
+        return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden';
+      });
+    }
+    function moveFocus(direction){
+      const list=candidates();if(!list.length)return;
+      const active=document.activeElement;
+      const current=list.includes(active)?active:null;
+      if(!current){list[0].focus({preventScroll:true});list[0].scrollIntoView({block:'nearest',inline:'nearest'});return;}
+      const a=current.getBoundingClientRect(),ax=a.left+a.width/2,ay=a.top+a.height/2;
+      let best=null,bestScore=Infinity;
+      for(const el of list){if(el===current)continue;const r=el.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2,dx=x-ax,dy=y-ay;
+        const primary=direction==='right'?dx:direction==='left'?-dx:direction==='down'?dy:-dy;
+        if(primary<=2)continue;
+        const secondary=(direction==='left'||direction==='right')?Math.abs(dy):Math.abs(dx);
+        const score=primary+secondary*1.65+(secondary>Math.max(a.width,a.height)*2?secondary:0);
+        if(score<bestScore){bestScore=score;best=el;}
+      }
+      if(!best){
+        const sorted=list.filter(el=>el!==current).sort((u,v)=>{
+          const ur=u.getBoundingClientRect(),vr=v.getBoundingClientRect();
+          const up=direction==='right'?ur.left:direction==='left'?-ur.right:direction==='down'?ur.top:-ur.bottom;
+          const vp=direction==='right'?vr.left:direction==='left'?-vr.right:direction==='down'?vr.top:-vr.bottom;
+          return up-vp;
+        });best=sorted[0];
+      }
+      if(best){best.focus({preventScroll:true});best.scrollIntoView({block:'nearest',inline:'nearest',behavior:'smooth'});}
+    }
+    document.addEventListener('keydown',e=>{
+      const direction={ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right'}[e.key];
+      if(direction){
+        const active=document.activeElement;
+        if(active&&(/INPUT|TEXTAREA|SELECT/.test(active.tagName)||active.isContentEditable))return;
+        e.preventDefault();moveFocus(direction);return;
+      }
+      if(e.key==='Escape'||e.key==='BrowserBack'||e.key==='GoBack'||e.key==='Backspace'){
+        const active=document.activeElement;
+        if(active&&(/INPUT|TEXTAREA|SELECT/.test(active.tagName)||active.isContentEditable))return;
+        const close=document.querySelector('#announcementOverlay [data-close],#announcementOverlay .modal-close,.modal-backdrop .cancel,.modal-backdrop [id*="cancel"],.modal-backdrop [id*="Close"]');
+        if(close){e.preventDefault();close.click();return;}
+        const nextPanel=document.getElementById('guestNextUpPanel');
+        if(nextPanel&&!nextPanel.hidden){e.preventDefault();document.getElementById('guestNextUpToggle')?.click();return;}
+      }
+    },true);
+    document.addEventListener('click',e=>{
+      const target=e.target.closest(selector);
+      if(target&&target.focus)target.focus({preventScroll:true});
+    },true);
+  }
+  installTvRemoteNavigation();
   const app = document.getElementById('app');
   const cfg = window.JUKEBOX_CONFIG || {};
   const colors = ['#9b5cff','#28a8ff','#18c9a0','#ff9d2e','#ff4f5f','#f1d21b','#ef67c7','#7bd66f','#54d8e8','#ff6f9c'];
