@@ -1981,3 +1981,11 @@ body{
 .fullscreen-control:hover{filter:brightness(1.2)}
 .player-card .controls{display:flex;align-items:center;justify-content:center;gap:16px;flex-wrap:wrap}
 @media(max-width:780px){.guest-player-status{min-height:82px;padding:16px}.guest-status-icon{width:42px;height:42px;flex-basis:42px}.player-card .controls{gap:12px}}
+
+.player-card:fullscreen{width:100vw;height:100vh;overflow:auto;border-radius:0!important;margin:0!important;padding:20px!important;background:#080d18;display:flex;flex-direction:column;justify-content:center}
+.player-card:fullscreen .player-shell{width:100%;max-height:calc(100vh - 190px);flex:0 1 auto}
+.player-card:fullscreen .player-shell .playerbox{max-height:calc(100vh - 190px)}
+.player-card:fullscreen .guest-player-status{max-width:900px;width:100%;margin:0 auto}
+.player-card:fullscreen .controls{margin:18px 0}
+.player-card:fullscreen .volume-control{width:min(900px,100%);margin:0 auto}
+.player-card:fullscreen #playState{margin-top:4px}
