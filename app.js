@@ -6,7 +6,7 @@
   const colors = ['#9b5cff','#28a8ff','#18c9a0','#ff9d2e','#ff4f5f','#f1d21b','#ef67c7','#7bd66f','#54d8e8','#ff6f9c'];
   const state = {
     room:null, me:null, people:[], queue:[], isHost:false, channel:null,
-    player:null, playerReady:false, ytReady:false, ytLoading:false, currentPosition:0, playbackStartedAt:0, playbackPlayedSeconds:0, hostVolume:80, busy:false, pendingSwitchSession:null, privateList:[], privateBusy:false, privateCollapsed:false, sharedCollapsed:false, playlistCollapsed:{}, queueVersion:0, chatMessages:[], chatLoading:false, pointsReady:false, endPreviewItems:null, drag:{type:null,id:null}, reconnectTimer:null, reconnecting:false, leaving:false
+    player:null, playerReady:false, ytReady:false, ytLoading:false, currentPosition:0, playbackStartedAt:0, playbackPlayedSeconds:0, hostVolume:80, busy:false, pendingSwitchSession:null, privateList:[], privateBusy:false, privateCollapsed:false, sharedCollapsed:false, playlistCollapsed:{}, queueVersion:0, chatMessages:[], chatLoading:false, pointsReady:false, pointVotes:[], pointVoteVideoId:null, pointVoteBusy:false, endPreviewItems:null, drag:{type:null,id:null}, reconnectTimer:null, reconnecting:false, leaving:false
   };
 
   function esc(v){ return String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -403,13 +403,49 @@
   async function refreshChatMessages(){await loadChatMessages();updatePeopleUI();}
   function receiveChatMessage(message){if(!message||!message.id)return;if(state.chatMessages.some(x=>x.id===message.id))return;state.chatMessages.push(message);state.chatMessages=state.chatMessages.slice(-80);renderChatMessages();}
   function updatePeopleUI(){const people=document.getElementById('peopleList');if(people)people.innerHTML=renderPeopleHtml();renderChatMessages();}
-  function renderPeopleHtml(){return state.people.map(p=>{const pts=Number(p.points||0);const isMe=p.id===state.me.id;return `<div class="person person-with-points"><div class="person-main"><span class="dot" style="background:${esc(p.color)}"></span><span>${esc(p.name)}${isMe?' <span class="muted">(You)</span>':''}${p.user_id===state.room.host_id?' 👑':''}</span></div><div class="person-score"><span class="points-badge">⭐ ${pts}</span>${isMe?'':`<button class="give-point-btn" data-give="${esc(p.id)}" title="Give points">🎁</button>`}</div></div>`;}).join('');}
+  function renderPeopleHtml(){return state.people.map(p=>{const pts=Number(p.points||0);const isMe=p.id===state.me.id;const canVote=!!state.room.current_video_id&&!!state.room.is_playing;return `<div class="person person-with-points"><div class="person-main"><span class="dot" style="background:${esc(p.color)}"></span><span>${esc(p.name)}${isMe?' <span class="muted">(You)</span>':''}${p.user_id===state.room.host_id?' 👑':''}</span></div><div class="person-score"><span class="points-badge">⭐ ${pts}</span>${isMe?'':`<button class="give-point-btn" data-give="${esc(p.id)}" title="${canVote?'Give points for the current song':'Points can only be given while a song is playing'}" ${canVote?'':'disabled'}>🎁</button>`}</div></div>`;}).join('');}
   function renderChatMessages(){const box=document.getElementById('roomChatMessages');if(!box)return;box.innerHTML=state.chatMessages.length?state.chatMessages.map(m=>{const mine=m.sender_id===state.me.id;return `<div class="chat-msg ${mine?'mine':''}"><span class="chat-dot" style="background:${esc(m.color||'#9b5cff')}"></span><div><div class="chat-meta">${esc(m.name||'Guest')}</div><div class="chat-bubble">${esc(m.message)}</div></div></div>`}).join(''):'<div class="chat-empty">Say something… 👋</div>';box.scrollTop=box.scrollHeight;bindPointButtons();}
   async function sendChat(){const input=document.getElementById('roomChatInput');if(!input)return;const message=input.value.trim();if(!message)return;if(message.length>240)return notify('Chat message is limited to 240 characters.','error');const row={id:uuid(),room_id:state.room.id,sender_id:state.me.id,name:state.me.name,color:state.me.color,message,created_at:new Date().toISOString()};input.value='';state.chatMessages.push(row);state.chatMessages=state.chatMessages.slice(-80);renderChatMessages();try{const r=await getClient().from('chat_messages').insert({id:row.id,room_id:row.room_id,sender_id:row.sender_id,name:row.name,color:row.color,message:row.message});if(r.error){} }catch(_){} await broadcast('chat',{message:row});}
   function addEmoji(e){const input=document.getElementById('roomChatInput');if(!input)return;const pos=input.selectionStart??input.value.length;input.value=input.value.slice(0,pos)+e+input.value.slice(pos);input.focus();input.selectionStart=input.selectionEnd=pos+e.length;}
   function bindPointButtons(){document.querySelectorAll('[data-give]').forEach(b=>b.onclick=()=>openGivePoints(b.dataset.give));}
-  function openGivePoints(recipientId){const existing=document.getElementById('givePointsPop');if(existing)existing.remove();const p=state.people.find(x=>x.id===recipientId);if(!p)return;const back=document.createElement('div');back.className='point-popover';back.innerHTML=`<div class="point-pop-card"><div class="small">Give points to <b>${esc(p.name)}</b></div><div class="point-options"><button class="btn" data-pts="1">+1 ⭐</button><button class="btn" data-pts="5">+5 ⭐</button><button class="btn primary" data-pts="10">+10 ⭐</button></div><button class="point-close">Cancel</button></div>`;back.id='givePointsPop';document.body.appendChild(back);back.querySelectorAll('[data-pts]').forEach(b=>b.onclick=()=>givePoints(recipientId,Number(b.dataset.pts)));back.querySelector('.point-close').onclick=()=>back.remove();back.onclick=e=>{if(e.target===back)back.remove();};}
-  async function givePoints(recipientId,amount){const back=document.getElementById('givePointsPop');if(back)back.remove();if(recipientId===state.me.id)return;if(![1,5,10].includes(amount))return;const recipient=state.people.find(x=>x.id===recipientId);if(!recipient)return;try{const r=await getClient().rpc('give_points',{p_room_id:state.room.id,p_giver_id:state.me.id,p_recipient_id:recipientId,p_amount:amount});if(r.error)throw r.error;await refreshPeople();await broadcast('points',{people:state.people});notify(`Gave ${amount} point${amount===1?'':'s'} to ${recipient.name} ⭐`,'info');}catch(e){notify('Points need the chat/points database update first.','error');}}
+  async function openGivePoints(recipientId){
+    const existing=document.getElementById('givePointsPop');if(existing)existing.remove();
+    const p=state.people.find(x=>x.id===recipientId);if(!p||recipientId===state.me.id)return;
+    const videoId=state.room?.current_video_id;
+    if(!videoId||!state.room?.is_playing)return notify('Points can only be given while a song is playing.','info');
+    try{
+      const votes=await getClient().from('point_votes').select('recipient_id').eq('room_id',state.room.id).eq('video_id',videoId).eq('giver_id',state.me.id);
+      if(votes.error)throw votes.error;
+      state.pointVotes=(votes.data||[]).map(v=>v.recipient_id);state.pointVoteVideoId=videoId;
+      if(state.pointVotes.includes(recipientId))return notify('You already gave points to this person for this song.','info');
+    }catch(e){return notify('Points database update is required before song voting can be used.','error');}
+    if(!state.room?.is_playing||state.room.current_video_id!==videoId)return notify('The song changed. Open points again for the current song.','info');
+    const back=document.createElement('div');back.className='point-popover';
+    back.innerHTML=`<div class="point-pop-card"><div class="small">Give points to <b>${esc(p.name)}</b></div><div class="small">Current song: ${esc(state.queue.find(x=>x.video_id===videoId)?.title||'Now playing')}</div><div class="point-options"><button class="btn" data-pts="1">+1 ⭐</button><button class="btn" data-pts="5">+5 ⭐</button><button class="btn primary" data-pts="10">+10 ⭐</button></div><div class="small">One selection per person for this song.</div><button class="point-close">Cancel</button></div>`;
+    back.id='givePointsPop';document.body.appendChild(back);
+    back.querySelectorAll('[data-pts]').forEach(b=>b.onclick=async()=>{if(state.pointVoteBusy)return;state.pointVoteBusy=true;back.querySelectorAll('[data-pts]').forEach(x=>x.disabled=true);await givePoints(recipientId,Number(b.dataset.pts),videoId);state.pointVoteBusy=false;});
+    back.querySelector('.point-close').onclick=()=>back.remove();back.onclick=e=>{if(e.target===back)back.remove();};
+  }
+  async function givePoints(recipientId,amount,videoId){
+    const back=document.getElementById('givePointsPop');
+    if(recipientId===state.me.id||![1,5,10].includes(amount))return;
+    const recipient=state.people.find(x=>x.id===recipientId);if(!recipient)return;
+    if(!videoId||!state.room?.is_playing||state.room.current_video_id!==videoId){if(back)back.remove();return notify('Points can only be given while that song is playing.','error');}
+    try{
+      const r=await getClient().rpc('give_points',{p_room_id:state.room.id,p_giver_id:state.me.id,p_recipient_id:recipientId,p_video_id:videoId,p_amount:amount});
+      if(r.error)throw r.error;
+      if(back)back.remove();
+      state.pointVotes=state.pointVoteVideoId===videoId?[...new Set([...state.pointVotes,recipientId])]:[recipientId];state.pointVoteVideoId=videoId;
+      await refreshPeople();await broadcast('points',{people:state.people});
+      notify(`Gave ${amount} point${amount===1?'':'s'} to ${recipient.name} for this song ⭐`,'info');
+    }catch(e){
+      if(back)back.remove();
+      const msg=String(e?.message||e);
+      if(/already voted|already gave|duplicate key|unique constraint/i.test(msg))notify('You already gave points to this person for this song.','info');
+      else if(/song is not playing|current song changed/i.test(msg))notify('Points can only be given while that song is playing.','error');
+      else notify('Points could not be given. Apply the song-points database migration, then try again.','error');
+    }
+  }
   async function refreshQueue(){const r=await getClient().from('queue_items').select('*').eq('room_id',state.room.id).order('position',{ascending:true});if(!r.error){state.queue=r.data||[];updateRoomView();}}
   async function refreshRoom(){const r=await getClient().from('rooms').select('*').eq('id',state.room.id).single();if(!r.error){const wasHost=!!state.isHost;state.room=r.data;state.queueVersion=Number(r.data.queue_version||0);state.isHost=!!state.me&&state.me.user_id===state.room.host_id;updateRoomView();if(wasHost!==state.isHost){if(!state.isHost){try{if(state.player&&typeof state.player.stopVideo==='function')state.player.stopVideo();if(state.player&&typeof state.player.destroy==='function')state.player.destroy();}catch(_){}state.player=null;state.playerReady=false;}else if(state.room.current_video_id)loadYouTubeAPI();}else if(state.isHost&&state.room.current_video_id)ensureYouTubePlayer();saveRoomSession();}}
 
