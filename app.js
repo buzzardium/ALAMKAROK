@@ -471,12 +471,16 @@
       .on('broadcast',{event:'room'},({payload})=>{state.room={...state.room,...payload};if(Number.isFinite(Number(payload?.queue_version)))state.queueVersion=Number(payload.queue_version);saveRoomSession();updateRoomView();})
       .on('broadcast',{event:'chat'},({payload})=>{if(payload?.message) receiveChatMessage(payload.message);})
       .on('broadcast',{event:'points'},({payload})=>{if(payload?.people){state.people=payload.people;updatePeopleUI();}})
+      .on('presence',{event:'leave'},({leftPresences})=>handleHostPresenceLeave(leftPresences))
       .on('postgres_changes',{event:'*',schema:'public',table:'participants',filter:`room_id=eq.${state.room.id}`},refreshPeople)
       .on('postgres_changes',{event:'*',schema:'public',table:'chat_messages',filter:`room_id=eq.${state.room.id}`},refreshChatMessages)
       .on('postgres_changes',{event:'*',schema:'public',table:'queue_items',filter:`room_id=eq.${state.room.id}`},scheduleQueueRefresh)
       .on('postgres_changes',{event:'UPDATE',schema:'public',table:'rooms',filter:`id=eq.${state.room.id}`},refreshRoom)
       .subscribe(async status=>{
         if(status==='SUBSCRIBED'){
+          try{
+            await channel.track({participantId:state.me.id,userId:state.me.user_id,name:state.me.name});
+          }catch(_){}
           try{
             await recoverRoomState();
           }catch(e){
@@ -1041,6 +1045,64 @@
     back.querySelector('#hostSelect').onclick=()=>{picker.hidden=!picker.hidden;};
     back.querySelector('#hostRandom').onclick=()=>completeHostHandoff(others[Math.floor(Math.random()*others.length)]);
     back.querySelectorAll('[data-host-person]').forEach(b=>b.onclick=()=>completeHostHandoff(others.find(p=>p.id===b.dataset.hostPerson)));
+  }
+  let hostLeavePromptTimer=null;
+  async function handleHostPresenceLeave(leftPresences){
+    if(state.leaving||state.isHost||!state.room||!state.me||!Array.isArray(leftPresences))return;
+    const departedHostId=state.room.host_id;
+    if(!departedHostId||!leftPresences.some(p=>p&&p.userId===departedHostId))return;
+    if(hostLeavePromptTimer)clearTimeout(hostLeavePromptTimer);
+    hostLeavePromptTimer=setTimeout(async()=>{
+      hostLeavePromptTimer=null;
+      if(state.leaving||state.isHost||!state.room||!state.me||state.room.host_id!==departedHostId)return;
+      try{
+        const r=await getClient().from('rooms').select('*').eq('id',state.room.id).single();
+        if(r.error||!r.data||r.data.host_id!==departedHostId)return;
+        state.room=r.data;
+        const presence=state.channel?.presenceState?.()||{};
+        const hostStillPresent=Object.values(presence).flat().some(p=>p&&p.userId===departedHostId);
+        if(hostStillPresent)return;
+        showHostTakeoverModal(departedHostId);
+      }catch(_){}
+    },2500);
+  }
+  function closeHostTakeoverModal(){const el=document.getElementById('hostTakeoverModal');if(el)el.remove();}
+  function showHostTakeoverModal(departedHostId){
+    if(state.isHost||!state.room||!state.me||document.getElementById('hostTakeoverModal'))return;
+    const back=document.createElement('div');
+    back.className='modalback host-handoff-overlay';
+    back.id='hostTakeoverModal';
+    back.innerHTML=`<div class="modal host-handoff-modal"><div class="brand">ALAMKAROK</div><div class="small">Room ${esc(state.room.code)}</div><h2>Host Disconnected</h2><p class="sub">The host appears to have left the room. Become the new host to keep playback controls available?</p><div class="modalactions"><button class="btn" id="hostTakeoverLater" type="button">Not Now</button><button class="btn primary" id="hostTakeoverNow" type="button">Become Host</button></div><div class="small" id="hostTakeoverStatus" aria-live="polite"></div></div>`;
+    document.body.appendChild(back);
+    back.querySelector('#hostTakeoverLater').onclick=closeHostTakeoverModal;
+    back.querySelector('#hostTakeoverNow').onclick=()=>takeOverDisconnectedHost(departedHostId);
+  }
+  async function takeOverDisconnectedHost(departedHostId){
+    if(state.leaving||state.isHost||!state.room||!state.me||!state.me.user_id)return;
+    const back=document.getElementById('hostTakeoverModal');
+    const button=back?.querySelector('#hostTakeoverNow');
+    const status=back?.querySelector('#hostTakeoverStatus');
+    if(button){button.disabled=true;button.textContent='Taking over…';}
+    if(status)status.textContent='Checking room ownership…';
+    try{
+      const r=await getClient().from('rooms').update({host_id:state.me.user_id,updated_at:new Date().toISOString()}).eq('id',state.room.id).eq('host_id',departedHostId).select().single();
+      if(r.error||!r.data)throw r.error||new Error('Another participant may already have taken over.');
+      state.room=r.data;
+      state.isHost=true;
+      saveRoomSession();
+      closeHostTakeoverModal();
+      updateRoomView();
+      try{await state.channel?.track({participantId:state.me.id,userId:state.me.user_id,name:state.me.name});}catch(_){}
+      try{await broadcast('room',{host_id:state.me.user_id,updated_at:state.room.updated_at});}catch(_){}
+      try{await getClient().from('participants').delete().eq('room_id',state.room.id).eq('user_id',departedHostId);}catch(_){}
+      await refreshPeople();
+      if(state.room.current_video_id)loadYouTubeAPI();
+      notify('You are now the host. Playback controls are yours.','info');
+    }catch(e){
+      if(button){button.disabled=false;button.textContent='Try Again';}
+      if(status)status.textContent='Could not take over automatically. The room permissions may need an update.';
+      notify(e?.message||'Could not take over hosting.','error');
+    }
   }
   async function leaveRoomNow(){
     state.leaving=true;if(state.reconnectTimer){clearTimeout(state.reconnectTimer);state.reconnectTimer=null;}
