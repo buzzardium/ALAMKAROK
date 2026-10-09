@@ -47,17 +47,27 @@
     if(existing)Object.assign(existing,record);else state.personalPlaylists.push(record);
     savePersonalPlaylists(); return true;
   }
-  function loadStoredPlaylist(id){
+  async function loadStoredPlaylist(id){
     const p=state.personalPlaylists.find(x=>x.id===id); if(!p)return;
-    state.privateList=p.items.map(x=>({...x,id:privateItemId(),selected:false}));
+    const button=Array.from(document.querySelectorAll('[data-stored-open]')).find(b=>b.dataset.storedOpen===id);
+    if(button){button.disabled=true;button.innerText='Checking videos…';}
+    let removed=0,unknown=0; const kept=[];
+    for(let i=0;i<p.items.length;i+=5){
+      const results=await Promise.all(p.items.slice(i,i+5).map(async item=>({item,status:await checkVideoEmbeddable(item.video_id)})));
+      for(const result of results){if(result.status===false)removed++;else{kept.push(result.item);if(result.status===null)unknown++;}}
+    }
+    p.items=kept; p.updatedAt=new Date().toISOString(); savePersonalPlaylists();
+    state.privateList=kept.map(x=>({...x,id:privateItemId(),selected:false}));
     state.privateCollapsed=false; savePrivateList(); renderPrivateList(); updateListSectionUI();
     const body=document.getElementById('privateBody'); if(body)body.scrollIntoView({behavior:'smooth',block:'start'});
-    notify(`Loaded “${p.name}” into My List.`,'info');
+    document.querySelector('.stored-lists-modal')?.remove();
+    if(removed||unknown)notify('Loaded “'+p.name+'” into My List. Removed '+removed+' unavailable; '+unknown+' could not be verified.','info');
+    else notify('Loaded “'+p.name+'” into My List. All '+kept.length+' videos passed the available checks.','info');
   }
   function openStoredLists(){
     loadPersonalPlaylists();
     const back=document.createElement('div'); back.className='modalback';
-    const rows=state.personalPlaylists.map(p=>`<div class="stored-list-row"><button class="btn stored-list-open" data-stored-open="${esc(p.id)}"><b>${esc(p.name)}</b><span class="small">${p.items.length} song${p.items.length===1?'':'s'}</span></button><button class="btn danger-sm stored-list-delete" data-stored-del="${esc(p.id)}" title="Delete stored list">×</button></div>`).join('');
+    const rows=state.personalPlaylists.map(p=>`<div class="stored-list-row"><button class="btn stored-list-open" data-stored-open="${esc(p.id)}"><b>${esc(p.name)}</b><span class="small">${p.items.length} saved videos · check on open</span></button><button class="btn danger-sm stored-list-delete" data-stored-del="${esc(p.id)}" title="Delete stored list">×</button></div>`).join('');
     back.innerHTML=`<div class="modal stored-lists-modal"><div class="brand">ALAMKAROK</div><h2>Stored Lists</h2><p class="sub">Your personal playlists are stored on this device and are not shared with the room.</p><div class="stored-list-list">${rows||'<div class="empty">No stored lists yet.</div>'}</div><div class="modalactions"><button class="btn" id="saveCurrentList">Save Current My List</button><button class="btn primary" id="closeStoredLists">Close</button></div></div>`;
     document.body.appendChild(back);
     back.querySelector('#closeStoredLists').onclick=()=>back.remove();
@@ -208,6 +218,51 @@
   function playlistId(value){ try{ const u=new URL(value); return u.hostname.includes('youtube.com')&&u.searchParams.get('list') ? u.searchParams.get('list') : null; }catch(_){ return null; } }
   function privateItemId(){ return 'p-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8); }
   async function videoTitle(id){ let title='YouTube video'; try{const r=await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${encodeURIComponent(id)}&format=json`);if(r.ok){const j=await r.json();if(j.title)title=j.title;}}catch(_){} return title; }
+  // Best-effort preflight: YouTube only exposes embed permission through the Data API.
+  // null means unknown (no key, rate limit, network failure), not automatically blocked.
+  async function checkVideoEmbeddable(id){
+    const key=String(cfg.YOUTUBE_API_KEY||'').trim();
+    if(key){
+      try{
+        const r=await fetch(`https://www.googleapis.com/youtube/v3/videos?part=status&id=${encodeURIComponent(id)}&key=${encodeURIComponent(key)}`);
+        if(r.ok){
+          const j=await r.json();
+          if(Array.isArray(j.items)&&j.items.length&&j.items[0].status?.embeddable===false)return false;
+          if(Array.isArray(j.items)&&j.items.length&&j.items[0].status?.embeddable===true)return true;
+          if(Array.isArray(j.items)&&j.items.length===0)return false;
+        }
+      }catch(_){}
+    }
+    try{
+      const r=await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${encodeURIComponent(id)}&format=json`);
+      if(r.status===404||r.status===410)return false;
+      if(r.ok)return true;
+    }catch(_){}
+    return null;
+  }
+  async function skipUnplayableCurrent(videoId,errorCode){
+    if(!state.isHost||state.room?.current_video_id!==videoId)return;
+    const idx=state.queue.findIndex(x=>x.video_id===videoId);
+    const item=idx>=0?state.queue[idx]:null;
+    if(item){
+      const r=await getClient().from('queue_items').delete().eq('id',item.id);
+      if(r.error){notify('This video cannot be embedded. Remove it from Shared Queue to continue.','error');return;}
+      await refreshQueue();await normalizePositions();await refreshQueue();
+      await broadcast('queue',{queue:state.queue});
+    }
+    const next=state.queue[Math.max(0,idx)];
+    if(next){
+      await performPlayback('load',next.video_id,0,true,true);
+      notify('Skipped a YouTube video that cannot be played here.','info');
+    }else{
+      const patch={current_video_id:null,current_index:0,is_playing:false,position_seconds:0,updated_at:new Date().toISOString()};
+      const r=await getClient().from('rooms').update(patch).eq('id',state.room.id).select().single();
+      if(!r.error)state.room=r.data;
+      updateRoomView();await broadcast('room',patch);
+      try{state.player?.stopVideo();}catch(_){}
+      notify('The video cannot be embedded and the queue is empty.','info');
+    }
+  }
   function notify(message, kind='info'){
     let n=document.getElementById('toast');
     if(!n){ n=document.createElement('div'); n.id='toast'; document.body.appendChild(n); }
@@ -1037,6 +1092,8 @@
     const id=ytId(value);
     if(!id)return notify('Enter a valid YouTube video link.','error');
     if(state.privateList.some(x=>x.video_id===id))return notify('That video is already in your private list.','info');
+    const playable=await checkVideoEmbeddable(id);
+    if(playable===false)return notify('This YouTube video is unavailable or does not allow embedding. It was not added to My List.','error');
     const item={id:privateItemId(),video_id:id,title:'YouTube video',thumbnail:ytThumb(id),selected:false};
     state.privateList.push(item);
     savePrivateList();
@@ -1080,7 +1137,7 @@
     }catch(e){notify(e.message||'Could not upload videos to the shared queue','error');}finally{state.privateBusy=false;}
   }
 
-  async function addLink(){if(state.busy)return;const input=document.getElementById('url');const id=ytId(input.value.trim());if(!id)return notify('Enter a valid YouTube link.','error');state.busy=true;try{let title='YouTube video';try{const r=await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${encodeURIComponent(id)}&format=json`);if(r.ok){const j=await r.json();if(j.title)title=j.title;}}catch(_){}const pos=state.queue.length?Math.max(...state.queue.map(x=>x.position))+1:0;const r=await getClient().from('queue_items').insert({room_id:state.room.id,video_id:id,title,thumbnail:ytThumb(id),added_by:state.me.id,position:pos}).select().single();if(r.error)throw r.error;input.value='';await refreshQueue();await broadcast('queue',{queue:state.queue});if(state.isHost&&!state.room.current_video_id)await performPlayback('load',id,0,true);notify('Added to the shared queue');}catch(e){notify(e.message||'Could not add video','error');}finally{state.busy=false;}}
+  async function addLink(){if(state.busy)return;const input=document.getElementById('url');const id=ytId(input.value.trim());if(!id)return notify('Enter a valid YouTube link.','error');state.busy=true;try{const playable=await checkVideoEmbeddable(id);if(playable===false){notify('This YouTube video is unavailable or does not allow embedding. It was not added.','error');return;}let title=await videoTitle(id);const pos=state.queue.length?Math.max(...state.queue.map(x=>x.position))+1:0;const r=await getClient().from('queue_items').insert({room_id:state.room.id,video_id:id,title,thumbnail:ytThumb(id),added_by:state.me.id,position:pos}).select().single();if(r.error)throw r.error;input.value='';await refreshQueue();await broadcast('queue',{queue:state.queue});if(state.isHost&&!state.room.current_video_id)await performPlayback('load',id,0,true);notify(playable===null?'Added to Shared Queue (could not pre-check embed permission).':'Added to the shared queue');}catch(e){notify(e.message||'Could not add video','error');}finally{state.busy=false;}}
   async function removeItem(id){
     const item=state.queue.find(x=>x.id===id); if(!item)return;
     const wasCurrent=item.video_id===state.room.current_video_id;
@@ -1354,7 +1411,12 @@
             }
           },
           onError:e=>{
+            const videoId=state.room?.current_video_id;
             const messages={2:'Invalid YouTube video ID.',5:'YouTube player error.',100:'This video was removed or is private.',101:'This video cannot be embedded.',150:'This video cannot be embedded.'};
+            if((e.data===101||e.data===150||e.data===100)&&state.isHost&&videoId){
+              skipUnplayableCurrent(videoId,e.data).catch(()=>notify(messages[e.data]||'Could not skip unavailable video.','error'));
+              return;
+            }
             notify(messages[e.data]||`YouTube player error (${e.data}).`,'error');
           },
           onAutoplayBlocked:()=>notify('YouTube blocked automatic playback. Press Play on the host phone.','info')
