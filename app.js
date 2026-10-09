@@ -77,7 +77,7 @@
   const colors = ['#9b5cff','#28a8ff','#18c9a0','#ff9d2e','#ff4f5f','#f1d21b','#ef67c7','#7bd66f','#54d8e8','#ff6f9c'];
   const state = {
     room:null, me:null, people:[], queue:[], isHost:false, channel:null,
-    player:null, playerReady:false, ytReady:false, ytLoading:false, currentPosition:0, playbackStartedAt:0, playbackPlayedSeconds:0, hostVolume:80, busy:false, pendingSwitchSession:null, privateList:[], privateBusy:false, privateCollapsed:false, sharedCollapsed:false, playlistCollapsed:{}, queueVersion:0, chatMessages:[], chatLoading:false, pointsReady:false, pointVotes:[], pointVoteVideoId:null, pointVoteBusy:false, endPreviewItems:null, drag:{type:null,id:null}, reconnectTimer:null, reconnecting:false, leaving:false
+    player:null, playerReady:false, ytReady:false, ytLoading:false, currentPosition:0, playbackStartedAt:0, playbackPlayedSeconds:0, hostVolume:80, busy:false, pendingSwitchSession:null, privateList:[], privateBusy:false, privateCollapsed:false, sharedCollapsed:false, playlistCollapsed:{}, queueVersion:0, chatMessages:[], chatLoading:false, pointsReady:false, pointVotes:[], pointVoteVideoId:null, pointVoteBusy:false, endPreviewItems:null, drag:{type:null,id:null}, reconnectTimer:null, reconnecting:false, leaving:false, hostPresenceMonitor:null
   };
 
   function esc(v){ return String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -532,12 +532,19 @@
       .on('broadcast',{event:'room'},({payload})=>{state.room={...state.room,...payload};if(Number.isFinite(Number(payload?.queue_version)))state.queueVersion=Number(payload.queue_version);saveRoomSession();updateRoomView();})
       .on('broadcast',{event:'chat'},({payload})=>{if(payload?.message) receiveChatMessage(payload.message);})
       .on('broadcast',{event:'points'},({payload})=>{if(payload?.people){state.people=payload.people;updatePeopleUI();}})
+      .on('presence',{event:'leave'},({leftPresences})=>handleHostPresenceLeave(leftPresences))
+      .on('presence',{event:'sync'},()=>checkHostPresence())
       .on('postgres_changes',{event:'*',schema:'public',table:'participants',filter:`room_id=eq.${state.room.id}`},refreshPeople)
       .on('postgres_changes',{event:'*',schema:'public',table:'chat_messages',filter:`room_id=eq.${state.room.id}`},refreshChatMessages)
       .on('postgres_changes',{event:'*',schema:'public',table:'queue_items',filter:`room_id=eq.${state.room.id}`},scheduleQueueRefresh)
       .on('postgres_changes',{event:'UPDATE',schema:'public',table:'rooms',filter:`id=eq.${state.room.id}`},refreshRoom)
       .subscribe(async status=>{
         if(status==='SUBSCRIBED'){
+          try{
+            await channel.track({participantId:state.me.id,userId:state.me.user_id,name:state.me.name});
+          }catch(_){}
+          if(state.hostPresenceMonitor)clearInterval(state.hostPresenceMonitor);
+          state.hostPresenceMonitor=setInterval(checkHostPresence,4000);
           try{
             await recoverRoomState();
           }catch(e){
@@ -1103,8 +1110,93 @@
     back.querySelector('#hostRandom').onclick=()=>completeHostHandoff(others[Math.floor(Math.random()*others.length)]);
     back.querySelectorAll('[data-host-person]').forEach(b=>b.onclick=()=>completeHostHandoff(others.find(p=>p.id===b.dataset.hostPerson)));
   }
+  let hostLeavePromptTimer=null;
+  let hostTakeoverDismissedId=null;
+  let hostPresenceMissingSince=0;
+  let hostPresenceMissingId=null;
+  async function checkHostPresence(){
+    if(state.leaving||state.isHost||!state.room||!state.me||!state.channel)return;
+    const hostId=state.room.host_id;
+    if(!hostId)return;
+    const presence=state.channel.presenceState?.()||{};
+    const hostPresent=Object.values(presence).flat().some(p=>p&&p.userId===hostId);
+    if(hostPresent){
+      hostTakeoverDismissedId=null;
+      hostPresenceMissingSince=0;
+      hostPresenceMissingId=null;
+      return;
+    }
+    if(hostPresenceMissingId!==hostId){hostPresenceMissingId=hostId;hostPresenceMissingSince=Date.now();return;}
+    if(!hostPresenceMissingSince||Date.now()-hostPresenceMissingSince<7000)return;
+    try{
+      const r=await getClient().from('rooms').select('*').eq('id',state.room.id).single();
+      if(r.error||!r.data||r.data.host_id!==hostId)return;
+      state.room=r.data;
+      const latestPresence=state.channel?.presenceState?.()||{};
+      const returned=Object.values(latestPresence).flat().some(p=>p&&p.userId===hostId);
+      if(!returned)showHostTakeoverModal(hostId);
+    }catch(_){}
+    hostPresenceMissingSince=0;
+  }
+  async function handleHostPresenceLeave(leftPresences){
+    if(state.leaving||state.isHost||!state.room||!state.me||!Array.isArray(leftPresences))return;
+    const departedHostId=state.room.host_id;
+    if(!departedHostId||!leftPresences.some(p=>p&&p.userId===departedHostId))return;
+    if(hostLeavePromptTimer)clearTimeout(hostLeavePromptTimer);
+    hostLeavePromptTimer=setTimeout(async()=>{
+      hostLeavePromptTimer=null;
+      if(state.leaving||state.isHost||!state.room||!state.me||state.room.host_id!==departedHostId)return;
+      try{
+        const r=await getClient().from('rooms').select('*').eq('id',state.room.id).single();
+        if(r.error||!r.data||r.data.host_id!==departedHostId)return;
+        state.room=r.data;
+        const presence=state.channel?.presenceState?.()||{};
+        const hostStillPresent=Object.values(presence).flat().some(p=>p&&p.userId===departedHostId);
+        if(hostStillPresent)return;
+        showHostTakeoverModal(departedHostId);
+      }catch(_){}
+    },2500);
+  }
+  function closeHostTakeoverModal(){const el=document.getElementById('hostTakeoverModal');if(el)el.remove();}
+  function showHostTakeoverModal(departedHostId){
+    if(state.isHost||!state.room||!state.me||hostTakeoverDismissedId===departedHostId||document.getElementById('hostTakeoverModal'))return;
+    const back=document.createElement('div');
+    back.className='modalback host-handoff-overlay';
+    back.id='hostTakeoverModal';
+    back.innerHTML=`<div class="modal host-handoff-modal"><div class="brand">ALAMKAROK</div><div class="small">Room ${esc(state.room.code)}</div><h2>Host Disconnected</h2><p class="sub">The host appears to have left the room. Become the new host to keep playback controls available?</p><div class="modalactions"><button class="btn" id="hostTakeoverLater" type="button">Not Now</button><button class="btn primary" id="hostTakeoverNow" type="button">Become Host</button></div><div class="small" id="hostTakeoverStatus" aria-live="polite"></div></div>`;
+    document.body.appendChild(back);
+    back.querySelector('#hostTakeoverLater').onclick=()=>{hostTakeoverDismissedId=departedHostId;closeHostTakeoverModal();};
+    back.querySelector('#hostTakeoverNow').onclick=()=>takeOverDisconnectedHost(departedHostId);
+  }
+  async function takeOverDisconnectedHost(departedHostId){
+    if(state.leaving||state.isHost||!state.room||!state.me||!state.me.user_id)return;
+    const back=document.getElementById('hostTakeoverModal');
+    const button=back?.querySelector('#hostTakeoverNow');
+    const status=back?.querySelector('#hostTakeoverStatus');
+    if(button){button.disabled=true;button.textContent='Taking over…';}
+    if(status)status.textContent='Checking room ownership…';
+    try{
+      const r=await getClient().from('rooms').update({host_id:state.me.user_id,updated_at:new Date().toISOString()}).eq('id',state.room.id).eq('host_id',departedHostId).select().single();
+      if(r.error||!r.data)throw r.error||new Error('Another participant may already have taken over.');
+      state.room=r.data;
+      state.isHost=true;
+      saveRoomSession();
+      closeHostTakeoverModal();
+      updateRoomView();
+      try{await state.channel?.track({participantId:state.me.id,userId:state.me.user_id,name:state.me.name});}catch(_){}
+      try{await broadcast('room',{host_id:state.me.user_id,updated_at:state.room.updated_at});}catch(_){}
+      try{await getClient().from('participants').delete().eq('room_id',state.room.id).eq('user_id',departedHostId);}catch(_){}
+      await refreshPeople();
+      if(state.room.current_video_id)loadYouTubeAPI();
+      notify('You are now the host. Playback controls are yours.','info');
+    }catch(e){
+      if(button){button.disabled=false;button.textContent='Try Again';}
+      if(status)status.textContent='Could not take over automatically. The room permissions may need an update.';
+      notify(e?.message||'Could not take over hosting.','error');
+    }
+  }
   async function leaveRoomNow(){
-    state.leaving=true;if(state.reconnectTimer){clearTimeout(state.reconnectTimer);state.reconnectTimer=null;}
+    state.leaving=true;if(state.hostPresenceMonitor){clearInterval(state.hostPresenceMonitor);state.hostPresenceMonitor=null;}if(hostLeavePromptTimer){clearTimeout(hostLeavePromptTimer);hostLeavePromptTimer=null;}if(state.reconnectTimer){clearTimeout(state.reconnectTimer);state.reconnectTimer=null;}
     try{if(state.player&&typeof state.player.stopVideo==='function')state.player.stopVideo();if(state.player&&typeof state.player.destroy==='function')state.player.destroy();}catch(_){}
     try{if(state.channel)await broadcast('participant_left',{participantId:state.me.id,name:state.me.name});}catch(_){}
     try{if(state.me?.id)await getClient().from('participants').delete().eq('id',state.me.id);}catch(_){}
