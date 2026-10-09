@@ -539,18 +539,22 @@
   }
   let queueRefreshTimer=null;
   let queueRefreshInFlight=false;
+  let queueRefreshPending=false;
   let renderedQueueSignature=null;
   function scheduleQueueRefresh(){
     if(queueRefreshTimer)clearTimeout(queueRefreshTimer);
     queueRefreshTimer=setTimeout(()=>{queueRefreshTimer=null;refreshQueue();},140);
   }
   async function refreshQueue(){
-    if(queueRefreshInFlight)return;
+    if(queueRefreshInFlight){queueRefreshPending=true;return;}
     queueRefreshInFlight=true;
     try{
       const r=await getClient().from('queue_items').select('*').eq('room_id',state.room.id).order('position',{ascending:true});
       if(!r.error){state.queue=r.data||[];updateRoomView();}
-    }finally{queueRefreshInFlight=false;}
+    }finally{
+      queueRefreshInFlight=false;
+      if(queueRefreshPending){queueRefreshPending=false;scheduleQueueRefresh();}
+    }
   }
   async function refreshRoom(){const r=await getClient().from('rooms').select('*').eq('id',state.room.id).single();if(!r.error){const wasHost=!!state.isHost;state.room=r.data;state.queueVersion=Number(r.data.queue_version||0);state.isHost=!!state.me&&state.me.user_id===state.room.host_id;updateRoomView();if(wasHost!==state.isHost){if(!state.isHost){try{if(state.player&&typeof state.player.stopVideo==='function')state.player.stopVideo();if(state.player&&typeof state.player.destroy==='function')state.player.destroy();}catch(_){}state.player=null;state.playerReady=false;}else if(state.room.current_video_id)loadYouTubeAPI();}else if(state.isHost&&state.room.current_video_id)ensureYouTubePlayer();saveRoomSession();}}
 
