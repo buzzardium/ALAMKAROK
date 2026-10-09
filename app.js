@@ -208,6 +208,51 @@
   function playlistId(value){ try{ const u=new URL(value); return u.hostname.includes('youtube.com')&&u.searchParams.get('list') ? u.searchParams.get('list') : null; }catch(_){ return null; } }
   function privateItemId(){ return 'p-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8); }
   async function videoTitle(id){ let title='YouTube video'; try{const r=await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${encodeURIComponent(id)}&format=json`);if(r.ok){const j=await r.json();if(j.title)title=j.title;}}catch(_){} return title; }
+  // Best-effort preflight: YouTube only exposes embed permission through the Data API.
+  // null means unknown (no key, rate limit, network failure), not automatically blocked.
+  async function checkVideoEmbeddable(id){
+    const key=String(cfg.YOUTUBE_API_KEY||'').trim();
+    if(key){
+      try{
+        const r=await fetch(`https://www.googleapis.com/youtube/v3/videos?part=status&id=${encodeURIComponent(id)}&key=${encodeURIComponent(key)}`);
+        if(r.ok){
+          const j=await r.json();
+          if(Array.isArray(j.items)&&j.items.length&&j.items[0].status?.embeddable===false)return false;
+          if(Array.isArray(j.items)&&j.items.length&&j.items[0].status?.embeddable===true)return true;
+          if(Array.isArray(j.items)&&j.items.length===0)return false;
+        }
+      }catch(_){}
+    }
+    try{
+      const r=await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${encodeURIComponent(id)}&format=json`);
+      if(r.status===404||r.status===410)return false;
+      if(r.ok)return true;
+    }catch(_){}
+    return null;
+  }
+  async function skipUnplayableCurrent(videoId,errorCode){
+    if(!state.isHost||state.room?.current_video_id!==videoId)return;
+    const idx=state.queue.findIndex(x=>x.video_id===videoId);
+    const item=idx>=0?state.queue[idx]:null;
+    if(item){
+      const r=await getClient().from('queue_items').delete().eq('id',item.id);
+      if(r.error){notify('This video cannot be embedded. Remove it from Shared Queue to continue.','error');return;}
+      await refreshQueue();await normalizePositions();await refreshQueue();
+      await broadcast('queue',{queue:state.queue});
+    }
+    const next=state.queue[Math.max(0,idx)];
+    if(next){
+      await performPlayback('load',next.video_id,0,true,true);
+      notify('Skipped a YouTube video that cannot be played here.','info');
+    }else{
+      const patch={current_video_id:null,current_index:0,is_playing:false,position_seconds:0,updated_at:new Date().toISOString()};
+      const r=await getClient().from('rooms').update(patch).eq('id',state.room.id).select().single();
+      if(!r.error)state.room=r.data;
+      updateRoomView();await broadcast('room',patch);
+      try{state.player?.stopVideo();}catch(_){}
+      notify('The video cannot be embedded and the queue is empty.','info');
+    }
+  }
   function notify(message, kind='info'){
     let n=document.getElementById('toast');
     if(!n){ n=document.createElement('div'); n.id='toast'; document.body.appendChild(n); }
@@ -1037,6 +1082,8 @@
     const id=ytId(value);
     if(!id)return notify('Enter a valid YouTube video link.','error');
     if(state.privateList.some(x=>x.video_id===id))return notify('That video is already in your private list.','info');
+    const playable=await checkVideoEmbeddable(id);
+    if(playable===false)return notify('This YouTube video is unavailable or does not allow embedding. It was not added to My List.','error');
     const item={id:privateItemId(),video_id:id,title:'YouTube video',thumbnail:ytThumb(id),selected:false};
     state.privateList.push(item);
     savePrivateList();
@@ -1080,7 +1127,7 @@
     }catch(e){notify(e.message||'Could not upload videos to the shared queue','error');}finally{state.privateBusy=false;}
   }
 
-  async function addLink(){if(state.busy)return;const input=document.getElementById('url');const id=ytId(input.value.trim());if(!id)return notify('Enter a valid YouTube link.','error');state.busy=true;try{let title='YouTube video';try{const r=await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${encodeURIComponent(id)}&format=json`);if(r.ok){const j=await r.json();if(j.title)title=j.title;}}catch(_){}const pos=state.queue.length?Math.max(...state.queue.map(x=>x.position))+1:0;const r=await getClient().from('queue_items').insert({room_id:state.room.id,video_id:id,title,thumbnail:ytThumb(id),added_by:state.me.id,position:pos}).select().single();if(r.error)throw r.error;input.value='';await refreshQueue();await broadcast('queue',{queue:state.queue});if(state.isHost&&!state.room.current_video_id)await performPlayback('load',id,0,true);notify('Added to the shared queue');}catch(e){notify(e.message||'Could not add video','error');}finally{state.busy=false;}}
+  async function addLink(){if(state.busy)return;const input=document.getElementById('url');const id=ytId(input.value.trim());if(!id)return notify('Enter a valid YouTube link.','error');state.busy=true;try{const playable=await checkVideoEmbeddable(id);if(playable===false){notify('This YouTube video is unavailable or does not allow embedding. It was not added.','error');return;}let title=await videoTitle(id);const pos=state.queue.length?Math.max(...state.queue.map(x=>x.position))+1:0;const r=await getClient().from('queue_items').insert({room_id:state.room.id,video_id:id,title,thumbnail:ytThumb(id),added_by:state.me.id,position:pos}).select().single();if(r.error)throw r.error;input.value='';await refreshQueue();await broadcast('queue',{queue:state.queue});if(state.isHost&&!state.room.current_video_id)await performPlayback('load',id,0,true);notify(playable===null?'Added to Shared Queue (could not pre-check embed permission).':'Added to the shared queue');}catch(e){notify(e.message||'Could not add video','error');}finally{state.busy=false;}}
   async function removeItem(id){
     const item=state.queue.find(x=>x.id===id); if(!item)return;
     const wasCurrent=item.video_id===state.room.current_video_id;
@@ -1354,7 +1401,12 @@
             }
           },
           onError:e=>{
+            const videoId=state.room?.current_video_id;
             const messages={2:'Invalid YouTube video ID.',5:'YouTube player error.',100:'This video was removed or is private.',101:'This video cannot be embedded.',150:'This video cannot be embedded.'};
+            if((e.data===101||e.data===150||e.data===100)&&state.isHost&&videoId){
+              skipUnplayableCurrent(videoId,e.data).catch(()=>notify(messages[e.data]||'Could not skip unavailable video.','error'));
+              return;
+            }
             notify(messages[e.data]||`YouTube player error (${e.data}).`,'error');
           },
           onAutoplayBlocked:()=>notify('YouTube blocked automatic playback. Press Play on the host phone.','info')
