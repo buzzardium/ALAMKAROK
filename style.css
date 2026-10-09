@@ -2005,3 +2005,13 @@ body{
 .guest-next-up-item span:first-child{color:#79baff;font-weight:800}
 .guest-next-up-item span:last-child{overflow-wrap:anywhere}
 .guest-next-up-count{margin-top:10px;padding-top:9px;border-top:1px solid rgba(255,255,255,.08);font-size:11px;color:#9eacc2;text-align:right}
+
+
+/* Optional Mi/Android TV mode (?tv=1): remote-friendly focus and hit targets. */
+html.tv-mode :focus-visible{outline:4px solid #69d4ff!important;outline-offset:4px!important;box-shadow:0 0 0 3px rgba(105,212,255,.22),0 0 22px rgba(105,212,255,.32)!important;position:relative;z-index:5}
+html.tv-mode button,html.tv-mode a[href],html.tv-mode [role="button"]{min-height:48px}
+html.tv-mode .control{width:60px;height:60px;font-size:22px}
+html.tv-mode .btn,html.tv-mode input,html.tv-mode select{font-size:17px}
+html.tv-mode .qitem,html.tv-mode .private-item,html.tv-mode .guest-next-up-toggle{cursor:pointer}
+html.tv-mode .qitem:focus-visible,html.tv-mode .private-item:focus-visible{border-color:#69d4ff!important;background:rgba(54,120,180,.22)!important}
+html.tv-mode{scroll-behavior:smooth}
