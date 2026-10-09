@@ -784,14 +784,6 @@
 
     function findTarget(clientY){
       let list=items().filter(el=>el!==item);
-      // Shared Queue rule: dragging an item from below cannot target/promote it
-      // to position #1. Use Play to select a song for the top position.
-      if(type==='shared'){
-        const ordered=items();
-        const draggedIndex=ordered.indexOf(item);
-        const first=ordered[0];
-        if(draggedIndex>0)list=list.filter(el=>el!==first);
-      }
       if(!list.length)return null;
       let best=null,bestDistance=Infinity;
       for(const el of list){
@@ -961,7 +953,13 @@
       return false;
     }finally{state.busy=false;}
   }
-  async function reorderQueueByDrop(fromId,toId){return reorderSharedQueue(fromId,toId);}
+  async function reorderQueueByDrop(fromId,toId){
+    const previousTopVideo=state.queue[0]?.video_id;
+    const ok=await reorderSharedQueue(fromId,toId);
+    const nextTop=state.queue[0];
+    if(ok&&nextTop&&nextTop.video_id!==previousTopVideo&&nextTop.video_id!==state.room?.current_video_id)await playQueueItem(nextTop.id);
+    return ok;
+  }
 
   async function moveQueueItem(id,direction){
     if(state.busy)return;
@@ -972,8 +970,11 @@
     const list=document.getElementById('queueList');
     const before=captureDragRects(list);
     const previousQueue=state.queue.slice();
+    const previousTopVideo=state.queue[0]?.video_id;
     [state.queue[index],state.queue[targetIndex]]=[state.queue[targetIndex],state.queue[index]];
-    await reorderSharedQueue(id,targetId,{beforeRects:before,previousQueue,optimisticApplied:true});
+    const ok=await reorderSharedQueue(id,targetId,{beforeRects:before,previousQueue,optimisticApplied:true});
+    const nextTop=state.queue[0];
+    if(ok&&nextTop&&nextTop.video_id!==previousTopVideo&&nextTop.video_id!==state.room?.current_video_id)await playQueueItem(nextTop.id);
   }
 
   async function shuffleQueue(){
