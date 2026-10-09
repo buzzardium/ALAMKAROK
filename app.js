@@ -1,6 +1,16 @@
 /* ALAMKAROK - resilient static web app */
 (() => {
   'use strict';
+  // Canonicalize all Vercel deployment URLs to the stable public production domain.
+  // Preserve room codes, paths, and any other query/hash data when redirecting.
+  if (location.hostname.endsWith('.vercel.app') && location.hostname !== 'alamkarok.vercel.app') {
+    const canonical = new URL(location.href);
+    canonical.protocol = 'https:';
+    canonical.hostname = 'alamkarok.vercel.app';
+    canonical.port = '';
+    location.replace(canonical.toString());
+    return;
+  }
   const app = document.getElementById('app');
   const cfg = window.JUKEBOX_CONFIG || {};
   const colors = ['#9b5cff','#28a8ff','#18c9a0','#ff9d2e','#ff4f5f','#f1d21b','#ef67c7','#7bd66f','#54d8e8','#ff6f9c'];
