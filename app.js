@@ -1110,7 +1110,9 @@
   function startPlaybackTiming(){if(!state.playbackStartedAt)state.playbackStartedAt=Date.now();}
   async function moveCurrentForInterruption(){
     const currentId=state.room?.current_video_id;
-    const idx=Number.isInteger(state.room?.current_index)?state.room.current_index:state.queue.findIndex(x=>x.video_id===currentId);
+    // Resolve the current song by ID first; current_index can be stale after a queue mutation.
+    const foundIndex=state.queue.findIndex(x=>x.video_id===currentId);
+    const idx=foundIndex>=0?foundIndex:(Number.isInteger(state.room?.current_index)?state.room.current_index:-1);
     const current=idx>=0?state.queue[idx]:null;
     if(!current)return;
     const playedSeconds=finalizePlaybackTiming();
@@ -1217,17 +1219,27 @@
     if(!payload||payload.from===state.me.id && !state.isHost)return;
     if(!state.isHost)return;
     if(payload.action==='play'||payload.action==='pause'){await performPlayback(payload.action,null,currentTime(),payload.action==='play');return;}
-    let idx=Number.isInteger(state.room.current_index)?state.room.current_index:0;
-    if(payload.action==='next')idx=Math.min(state.queue.length-1,idx+1);
-    if(payload.action==='previous')idx=Math.max(0,idx-1);
     if(payload.action==='load'&&payload.videoId){
       if(payload.videoId!==state.room.current_video_id)await moveCurrentForInterruption();
+      await refreshQueue();
       await performPlayback('load',payload.videoId,0,true);return;
     }
-    if((payload.action==='next'||payload.action==='previous')&&state.queue[idx]){
-      if(state.queue[idx].video_id!==state.room.current_video_id)await moveCurrentForInterruption();
-      await performPlayback('load',state.queue[idx].video_id,0,true);
-    }
+    if(payload.action!=='next'&&payload.action!=='previous')return;
+    const currentId=state.room?.current_video_id;
+    const foundIndex=state.queue.findIndex(x=>x.video_id===currentId);
+    const originalIndex=foundIndex>=0?foundIndex:(Number.isInteger(state.room.current_index)?state.room.current_index:0);
+    // Previous at the beginning should not move the current song or jump to another item.
+    if(payload.action==='previous'&&originalIndex<=0)return;
+    if(currentId&&foundIndex>=0)await moveCurrentForInterruption();
+    await refreshQueue();
+    // Whether the interrupted song is removed (>30s) or moved to the end (<=30s),
+    // the next song shifts into the old current index. Previous remains at index - 1.
+    const targetIndex=payload.action==='next'
+      ?Math.min(Math.max(0,originalIndex),state.queue.length-1)
+      :Math.max(0,originalIndex-1);
+    const target=state.queue[targetIndex];
+    // If the current song was already last and was moved to the end, there is no next song.
+    if(target&&target.video_id!==currentId)await performPlayback('load',target.video_id,0,true);
   }
   function currentTime(){try{return state.playerReady?state.player.getCurrentTime():Number(state.room.position_seconds||0);}catch(_){return Number(state.room.position_seconds||0);}}
   async function performPlayback(action,videoId,position=0,playing=false,preservePreview=false){
