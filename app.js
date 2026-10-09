@@ -1228,6 +1228,8 @@
     const currentId=state.room?.current_video_id;
     const foundIndex=state.queue.findIndex(x=>x.video_id===currentId);
     const originalIndex=foundIndex>=0?foundIndex:(Number.isInteger(state.room.current_index)?state.room.current_index:0);
+    // Previous at the beginning should not move the current song or jump to another item.
+    if(payload.action==='previous'&&originalIndex<=0)return;
     if(currentId&&foundIndex>=0)await moveCurrentForInterruption();
     await refreshQueue();
     // Whether the interrupted song is removed (>30s) or moved to the end (<=30s),
@@ -1236,7 +1238,8 @@
       ?Math.min(Math.max(0,originalIndex),state.queue.length-1)
       :Math.max(0,originalIndex-1);
     const target=state.queue[targetIndex];
-    if(target)await performPlayback('load',target.video_id,0,true);
+    // If the current song was already last and was moved to the end, there is no next song.
+    if(target&&target.video_id!==currentId)await performPlayback('load',target.video_id,0,true);
   }
   function currentTime(){try{return state.playerReady?state.player.getCurrentTime():Number(state.room.position_seconds||0);}catch(_){return Number(state.room.position_seconds||0);}}
   async function performPlayback(action,videoId,position=0,playing=false,preservePreview=false){
