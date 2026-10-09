@@ -1306,8 +1306,10 @@
 
   let endPreviewTimer=null;
   function getEndPreviewItems(){
-    const idx=state.room?.current_video_id?state.queue.findIndex(x=>x.video_id===state.room.current_video_id):-1;
-    return idx>=0?state.queue.slice(idx+1):state.queue.slice(0);
+    const currentId=state.room?.current_video_id;
+    // NEXT UP mirrors the Shared Queue, excluding the current song wherever it sits.
+    // This keeps the preview useful even if the current item was moved to the end.
+    return state.queue.filter(x=>!currentId||x.video_id!==currentId);
   }
   function updateEndPreview(){
     const currentTitle=document.getElementById('endPreviewCurrentTitle');
