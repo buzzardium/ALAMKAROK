@@ -47,17 +47,27 @@
     if(existing)Object.assign(existing,record);else state.personalPlaylists.push(record);
     savePersonalPlaylists(); return true;
   }
-  function loadStoredPlaylist(id){
+  async function loadStoredPlaylist(id){
     const p=state.personalPlaylists.find(x=>x.id===id); if(!p)return;
-    state.privateList=p.items.map(x=>({...x,id:privateItemId(),selected:false}));
+    const button=Array.from(document.querySelectorAll('[data-stored-open]')).find(b=>b.dataset.storedOpen===id);
+    if(button){button.disabled=true;button.innerText='Checking videos…';}
+    let removed=0,unknown=0; const kept=[];
+    for(let i=0;i<p.items.length;i+=5){
+      const results=await Promise.all(p.items.slice(i,i+5).map(async item=>({item,status:await checkVideoEmbeddable(item.video_id)})));
+      for(const result of results){if(result.status===false)removed++;else{kept.push(result.item);if(result.status===null)unknown++;}}
+    }
+    p.items=kept; p.updatedAt=new Date().toISOString(); savePersonalPlaylists();
+    state.privateList=kept.map(x=>({...x,id:privateItemId(),selected:false}));
     state.privateCollapsed=false; savePrivateList(); renderPrivateList(); updateListSectionUI();
     const body=document.getElementById('privateBody'); if(body)body.scrollIntoView({behavior:'smooth',block:'start'});
-    notify(`Loaded “${p.name}” into My List.`,'info');
+    document.querySelector('.stored-lists-modal')?.remove();
+    if(removed||unknown)notify('Loaded “'+p.name+'” into My List. Removed '+removed+' unavailable; '+unknown+' could not be verified.','info');
+    else notify('Loaded “'+p.name+'” into My List. All '+kept.length+' videos passed the available checks.','info');
   }
   function openStoredLists(){
     loadPersonalPlaylists();
     const back=document.createElement('div'); back.className='modalback';
-    const rows=state.personalPlaylists.map(p=>`<div class="stored-list-row"><button class="btn stored-list-open" data-stored-open="${esc(p.id)}"><b>${esc(p.name)}</b><span class="small">${p.items.length} song${p.items.length===1?'':'s'}</span></button><button class="btn danger-sm stored-list-delete" data-stored-del="${esc(p.id)}" title="Delete stored list">×</button></div>`).join('');
+    const rows=state.personalPlaylists.map(p=>`<div class="stored-list-row"><button class="btn stored-list-open" data-stored-open="${esc(p.id)}"><b>${esc(p.name)}</b><span class="small">${p.items.length} saved videos · check on open</span></button><button class="btn danger-sm stored-list-delete" data-stored-del="${esc(p.id)}" title="Delete stored list">×</button></div>`).join('');
     back.innerHTML=`<div class="modal stored-lists-modal"><div class="brand">ALAMKAROK</div><h2>Stored Lists</h2><p class="sub">Your personal playlists are stored on this device and are not shared with the room.</p><div class="stored-list-list">${rows||'<div class="empty">No stored lists yet.</div>'}</div><div class="modalactions"><button class="btn" id="saveCurrentList">Save Current My List</button><button class="btn primary" id="closeStoredLists">Close</button></div></div>`;
     document.body.appendChild(back);
     back.querySelector('#closeStoredLists').onclick=()=>back.remove();
