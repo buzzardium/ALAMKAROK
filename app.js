@@ -1422,19 +1422,19 @@
     setEndPreviewOpen(false);
   }
   async function togglePlayerFullscreen(){
-    const shell=document.getElementById('playerShell');
-    if(!shell)return;
+    const card=document.querySelector('.player-card');
+    if(!card||!state.isHost)return;
     try{
       if(document.fullscreenElement){await document.exitFullscreen();}
-      else await shell.requestFullscreen();
+      else await card.requestFullscreen();
     }catch(e){notify('Fullscreen is not available in this browser.','info');}
   }
   document.addEventListener('fullscreenchange',()=>{
-    const shell=document.getElementById('playerShell');
+    const card=document.querySelector('.player-card');
     const btn=document.getElementById('fullscreenBtn');
-    if(!shell||!btn)return;
-    const active=document.fullscreenElement===shell;
-    shell.classList.toggle('is-fullscreen',active);
+    if(!card||!btn)return;
+    const active=document.fullscreenElement===card;
+    card.classList.toggle('is-fullscreen',active);
     btn.textContent=active?'⛶':'⛶';
     btn.title=active?'Exit fullscreen':'Fullscreen';
     btn.setAttribute('aria-label',active?'Exit fullscreen':'Fullscreen');
