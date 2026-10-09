@@ -783,7 +783,15 @@
     }
 
     function findTarget(clientY){
-      const list=items().filter(el=>el!==item);
+      let list=items().filter(el=>el!==item);
+      // Shared Queue rule: dragging an item from below cannot target/promote it
+      // to position #1. Use Play to select a song for the top position.
+      if(type==='shared'){
+        const ordered=items();
+        const draggedIndex=ordered.indexOf(item);
+        const first=ordered[0];
+        if(draggedIndex>0)list=list.filter(el=>el!==first);
+      }
       if(!list.length)return null;
       let best=null,bestDistance=Infinity;
       for(const el of list){
