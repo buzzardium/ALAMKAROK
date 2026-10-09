@@ -1233,7 +1233,17 @@
       await refreshQueue();await normalizePositions();await refreshQueue();
     }else{
       const last=state.queue[state.queue.length-1];
-      if(last&&last.id!==current.id)await reorderSharedQueue(current.id,last.id);
+      if(last&&last.id!==current.id){
+        // reorder_queue_item inserts BEFORE its target. Move the old last item
+        // before the interrupted song on a second transaction so the interrupted
+        // song truly ends up at the bottom, not second-to-last.
+        const moved=await reorderSharedQueue(current.id,last.id);
+        if(moved){
+          const refreshedLast=state.queue[state.queue.length-1];
+          if(refreshedLast&&refreshedLast.id!==current.id)await reorderSharedQueue(refreshedLast.id,current.id);
+        }
+        await refreshQueue();
+      }
     }
     await broadcast('queue',{queue:state.queue,queue_version:state.queueVersion});
   }
