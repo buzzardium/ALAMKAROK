@@ -13,7 +13,8 @@
   function uuid(){ return (crypto && crypto.randomUUID) ? crypto.randomUUID() : 'u-'+Date.now()+'-'+Math.random().toString(36).slice(2); }
   function roomCode(){ return Math.random().toString(36).slice(2,7).toUpperCase(); }
   function validConfig(){ return /^https:\/\/[^\s]+\.supabase\.co(?:\/)?$/.test(String(cfg.SUPABASE_URL||'')) && /^sb_publishable_/.test(String(cfg.SUPABASE_ANON_KEY||'')); }
-  function roomUrl(code){ return `${location.origin}${location.pathname}?room=${encodeURIComponent(code)}`; }
+  const PUBLIC_APP_URL = 'https://alamkarok.vercel.app/';
+  function roomUrl(code){ return `${PUBLIC_APP_URL}?room=${encodeURIComponent(code)}`; }
   const ROOM_SESSION_KEY='alamkarok-room-session-v1';
   const PREVIOUS_ROOM_KEY='alamkarok-previous-room-v1';
   function saveRoomSession(){ try{ if(state.room&&state.me) localStorage.setItem(ROOM_SESSION_KEY,JSON.stringify({roomId:state.room.id,roomCode:state.room.code,participantId:state.me.id,userId:state.me.user_id,isHost:!!state.isHost})); }catch(_){} }
