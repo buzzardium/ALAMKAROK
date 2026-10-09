@@ -3,7 +3,7 @@
   'use strict';
   // Canonicalize all Vercel deployment URLs to the stable public production domain.
   // Preserve room codes, paths, and any other query/hash data when redirecting.
-  if (location.hostname.endsWith('.vercel.app') && location.hostname !== 'alamkarok.vercel.app') {
+  if (location.hostname.endsWith('.vercel.app') && location.hostname !== 'alamkarok.vercel.app' && new URLSearchParams(location.search).get('preview') !== '1') {
     const canonical = new URL(location.href);
     canonical.protocol = 'https:';
     canonical.hostname = 'alamkarok.vercel.app';
