@@ -1215,38 +1215,57 @@
   }
   function promptAddRoomPlaylist(){
     const back=document.createElement('div');back.className='modalback';
-    back.innerHTML='<div class="modal room-playlist-modal"><div class="brand">ALAMKAROK</div><h2>Add YouTube Playlist</h2><p class="sub">Paste a YouTube playlist URL. Its songs will be added to this room as a shared playlist card.</p><input class="input" id="youtubePlaylistUrl" type="url" placeholder="https://www.youtube.com/playlist?list=..." autocomplete="off"><div class="modalactions"><button class="btn" data-cancel>Cancel</button><button class="btn primary" data-import>Import Playlist</button></div></div>';
+    back.innerHTML='<div class="modal room-playlist-modal"><div class="brand">ALAMKAROK</div><h2>Add YouTube Playlist</h2><p class="sub">Paste a YouTube playlist URL. Its songs will be added to this room as a shared playlist card.</p><input class="input" id="youtubePlaylistUrl" type="url" placeholder="https://www.youtube.com/playlist?list=..." autocomplete="off"><p class="small" data-import-status role="status" aria-live="polite">Ready to import.</p><div class="modalactions"><button class="btn" data-cancel>Cancel</button><button class="btn primary" data-import type="button">Import Playlist</button></div></div>';
     document.body.appendChild(back);
     const input=back.querySelector('#youtubePlaylistUrl');
     const close=()=>back.remove();
     back.querySelector('[data-cancel]').onclick=close;
+    const status=back.querySelector('[data-import-status]');
+    const setStatus=(message,isError=false)=>{status.textContent=message;status.classList.toggle('error',isError);};
+    const button=back.querySelector('[data-import]');
     const submit=async()=>{
+      if(button.disabled)return;
       const value=input.value.trim();
       const listId=playlistId(value);
-      if(!listId){notify('Paste a valid YouTube playlist URL containing a playlist ID.','error');input.focus();return;}
-      const button=back.querySelector('[data-import]');button.disabled=true;button.textContent='Importing…';
-      try{await importYouTubePlaylistToRoom(listId);close();}
-      catch(e){notify(e.message||'Could not import YouTube playlist.','error');button.disabled=false;button.textContent='Import Playlist';}
+      if(!listId){setStatus('Paste a valid YouTube playlist URL containing a playlist ID.',true);input.focus();return;}
+      button.disabled=true;button.textContent='Importing…';setStatus('Starting import…');
+      try{
+        await importYouTubePlaylistToRoom(listId,setStatus);
+        setStatus('Import complete. Playlist card added.');
+        button.textContent='Imported';
+        setTimeout(close,900);
+      }catch(e){
+        const message=e?.message||String(e)||'Could not import YouTube playlist.';
+        setStatus('Import failed: '+message,true);
+        notify(message,'error');
+        button.disabled=false;button.textContent='Try Again';
+      }
     };
-    back.querySelector('[data-import]').onclick=submit;
+    button.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();submit();});
     input.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submit();}});
     input.focus();
   }
-  async function importYouTubePlaylistToRoom(listId){
+  async function importYouTubePlaylistToRoom(listId,setStatus=()=>{}){
     const key=String(cfg.YOUTUBE_API_KEY||'').trim();
-    if(!key)throw new Error('YouTube playlist import needs YOUTUBE_API_KEY in config.js. Add the YouTube Data API key, then try again.');
-    let playlistTitle='Imported YouTube Playlist';
-    const metaResponse=await fetch('https://www.googleapis.com/youtube/v3/playlists?part=snippet&id='+encodeURIComponent(listId)+'&key='+encodeURIComponent(key));
-    const meta=await metaResponse.json();
-    if(!metaResponse.ok)throw new Error(meta.error?.message||'Could not read that YouTube playlist.');
+    if(!key)throw new Error('YouTube playlist import needs YOUTUBE_API_KEY in config.js.');
+    setStatus('Step 1/4: Reading playlist details from YouTube…');
+    let metaResponse,meta;
+    try{
+      metaResponse=await fetch('https://www.googleapis.com/youtube/v3/playlists?part=snippet&id='+encodeURIComponent(listId)+'&key='+encodeURIComponent(key));
+      meta=await metaResponse.json();
+    }catch(e){throw new Error('YouTube playlist request failed: '+(e?.message||'Network or browser restriction'));}
+    if(!metaResponse.ok)throw new Error(meta.error?.message||('YouTube playlist request failed (HTTP '+metaResponse.status+').'));
     if(!meta.items?.length)throw new Error('That YouTube playlist was not found or is not accessible.');
-    playlistTitle=meta.items[0].snippet?.title||playlistTitle;
+    const playlistTitle=meta.items[0].snippet?.title||'Imported YouTube Playlist';
     const imported=[];
     let pageToken='';
+    setStatus('Step 2/4: Fetching playlist songs…');
     do{
       const url='https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=50&playlistId='+encodeURIComponent(listId)+'&key='+encodeURIComponent(key)+(pageToken?'&pageToken='+encodeURIComponent(pageToken):'');
-      const response=await fetch(url);const data=await response.json();
-      if(!response.ok)throw new Error(data.error?.message||'Could not read songs from that YouTube playlist.');
+      let response,data;
+      try{response=await fetch(url);data=await response.json();}
+      catch(e){throw new Error('Could not fetch playlist songs: '+(e?.message||'Network or browser restriction'));}
+      if(!response.ok)throw new Error(data.error?.message||('Fetching playlist songs failed (HTTP '+response.status+').'));
       for(const entry of (data.items||[])){
         const snippet=entry.snippet||{};
         const videoId=snippet.resourceId?.videoId;
@@ -1254,20 +1273,25 @@
         imported.push({room_id:state.room.id,playlist_id:null,video_id:videoId,title:snippet.title||'YouTube video',thumbnail:snippet.thumbnails?.medium?.url||snippet.thumbnails?.default?.url||ytThumb(videoId),position:imported.length,added_by:state.me.id});
       }
       pageToken=data.nextPageToken||'';
+      setStatus('Step 2/4: Retrieved '+imported.length+' songs…');
     }while(pageToken);
     if(!imported.length)throw new Error('No playable video entries were found in that playlist.');
-    const created=await getClient().from('room_playlists').insert({room_id:state.room.id,name:playlistTitle,created_by:state.me.id,created_by_name:state.me.name}).select().single();
-    if(created.error)throw created.error;
+    setStatus('Step 3/4: Saving '+imported.length+' songs to this room…');
+    const client=getClient();
+    const created=await client.from('room_playlists').insert({room_id:state.room.id,name:playlistTitle,created_by:state.me.id,created_by_name:state.me.name}).select().single();
+    if(created.error)throw new Error('Could not create shared playlist: '+created.error.message);
     const rows=imported.map(row=>({...row,playlist_id:created.data.id}));
     for(let i=0;i<rows.length;i+=100){
-      const inserted=await getClient().from('room_playlist_items').insert(rows.slice(i,i+100));
+      const inserted=await client.from('room_playlist_items').insert(rows.slice(i,i+100));
       if(inserted.error){
-        await getClient().from('room_playlists').delete().eq('id',created.data.id);
-        throw inserted.error;
+        await client.from('room_playlists').delete().eq('id',created.data.id);
+        throw new Error('Could not save playlist songs: '+inserted.error.message);
       }
     }
-    await refreshSharedPlaylists();
-    await broadcast('shared_playlists',{roomId:state.room.id});
+    setStatus('Step 4/4: Refreshing Shared Playlists…');
+    try{await refreshSharedPlaylists();}
+    catch(e){throw new Error('Songs were saved, but the playlist view could not refresh: '+(e?.message||String(e)));}
+    try{await broadcast('shared_playlists',{roomId:state.room.id});}catch(_){}
     notify('Added “'+playlistTitle+'” with '+imported.length+' songs to Shared Playlists.');
   }
   function promptCreateRoomPlaylist(){const name=window.prompt('Name this shared playlist:','New Playlist');if(name&&name.trim())createRoomPlaylist(name.trim());}
