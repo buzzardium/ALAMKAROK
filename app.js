@@ -1227,7 +1227,7 @@
     const box=document.getElementById('roomSearchResults');if(!box||box.dataset.bound==='1')return;box.dataset.bound='1';
     box.addEventListener('click',e=>{const b=e.target.closest('[data-search-add]');if(b)addSearchResultToQueue(b.dataset.searchAdd);});
   }
-  function normalizeSearchText(value){return String(value||'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();}
+  function normalizeSearchText(value){return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();}
   function editDistance(a,b){
     if(Math.abs(a.length-b.length)>2)return 99;
     let prev=Array.from({length:b.length+1},(_,i)=>i);
