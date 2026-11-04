@@ -529,7 +529,7 @@
       })
       .on('broadcast',{event:'volume'},({payload})=>{handleVolumeBroadcast(payload);})
       .on('broadcast',{event:'handoff_volume'},({payload})=>{handleHandoffVolume(payload);})
-      .on('broadcast',{event:'room'},({payload})=>{state.room={...state.room,...payload};if(Number.isFinite(Number(payload?.queue_version)))state.queueVersion=Number(payload.queue_version);saveRoomSession();updateRoomView();})
+      .on('broadcast',{event:'room'},({payload})=>{const wasHost=!!state.isHost;state.room={...state.room,...payload};state.isHost=!!state.me&&state.me.user_id===state.room.host_id;if(Number.isFinite(Number(payload?.queue_version)))state.queueVersion=Number(payload.queue_version);saveRoomSession();updateRoomView();if(wasHost!==state.isHost){if(!state.isHost){try{if(state.player&&typeof state.player.stopVideo==='function')state.player.stopVideo();if(state.player&&typeof state.player.destroy==='function')state.player.destroy();}catch(_){}state.player=null;state.playerReady=false;}else loadYouTubeAPI();}else if(state.isHost&&state.room.current_video_id)ensureYouTubePlayer();})
       .on('broadcast',{event:'chat'},({payload})=>{if(payload?.message) receiveChatMessage(payload.message);})
       .on('broadcast',{event:'points'},({payload})=>{if(payload?.people){state.people=payload.people;updatePeopleUI();}})
       .on('postgres_changes',{event:'*',schema:'public',table:'participants',filter:`room_id=eq.${state.room.id}`},refreshPeople)
