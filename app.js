@@ -641,13 +641,8 @@
                 <div id="sharedBody" class="collapsible-body ${state.sharedCollapsed?'collapsed':''}" aria-hidden="${state.sharedCollapsed?'true':'false'}"><div class="row"><input class="input" id="url" placeholder="Paste a YouTube link" inputmode="url"><button class="btn primary" id="add">Add to Queue</button></div><div class="queue" id="queueList">${q.length?q.map((x,i)=>`<div class="qitem ${x.video_id===current?'now':''}" draggable="false" data-drag-type="shared" data-drag-id="${esc(x.id)}"><div class="qnum drag-handle" title="Drag to reorder">⠿<span>${i+1}</span></div><img class="thumb" src="${esc(x.thumbnail||ytThumb(x.video_id))}" alt=""><div class="min0"><div class="qtitle">${esc(x.title||'YouTube video')}</div><div class="meta">${x.video_id===current?'NOW PLAYING · ':''}${esc(personName(x.added_by))}</div></div><div class="actions queue-actions"><button class="action-sm move-btn" data-up="${esc(x.id)}" title="Move up" ${i===0?'disabled':''}>↑</button><button class="action-sm move-btn" data-down="${esc(x.id)}" title="Move down" ${i===q.length-1?'disabled':''}>↓</button>${x.video_id!==current||state.isHost?`<button class="action-sm" data-play="${esc(x.id)}">Play</button>`:''}<button class="action-sm danger-sm" data-del="${esc(x.id)}">×</button></div></div>`).join(''):'<div class="empty">No videos yet. Add the first YouTube link.</div>'}</div></div>
       </section>
 
-      <section class="main-section private-section card gap private-card">
-        <div class="section-title section-toggle"><button class="btn collapse-btn" id="togglePrivate" data-collapse="private" aria-expanded="${state.privateCollapsed?'false':'true'}" aria-label="Collapse private list"><span class="chevron" aria-hidden="true">${state.privateCollapsed?'▼':'▲'}</span></button><div class="section-static-label">MY LIST <span class="section-private">— PRIVATE</span></div><div class="actions section-header-actions"><button class="btn section-action-btn" id="storedLists">Stored Lists</button><button class="btn section-action-btn" id="privateSelectAll">Select All</button></div></div>
-                <div id="privateBody" class="collapsible-body ${state.privateCollapsed?'collapsed':''}" aria-hidden="${state.privateCollapsed?'true':'false'}"><div class="row"><input class="input" id="privateUrl" placeholder="Paste a YouTube video or playlist link" inputmode="url"><button class="btn primary" id="privateAdd">Add to My List</button></div><div class="small private-help">Build your own list, then share selected songs or your full list as playlist cards everyone in this room can open.</div><div class="queue" id="privateList"></div><div class="private-actions"><button class="btn green" id="uploadSelected">Share Selected as Playlist</button><button class="btn" id="uploadAll">Share My List</button></div></div>
-      </section>
-
       <section class="main-section shared-library-section card gap">
-        <div class="section-title"><div class="section-static-label">SHARED PLAYLISTS <span class="section-count">(${state.sharedPlaylists.length})</span></div><span class="small">Visible to everyone in this room</span></div>
+        <div class="section-title"><div class="section-static-label">SHARED PLAYLISTS <span class="section-count">(${state.sharedPlaylists.length})</span></div><div class="actions"><span class="small">Visible to everyone in this room</span><button class="btn primary section-action-btn" id="createRoomPlaylist">+ Create Playlist</button></div></div>
         <div id="sharedPlaylistCards" class="shared-playlist-grid">${renderSharedPlaylistCardsHtml()}</div>
       </section>
 
@@ -662,9 +657,6 @@
 
       <div class="footer">Everyone can add links and control playback. Only the host displays YouTube.</div></div>`;
     bindRoomControls();
-    // Apply the universal 10-video viewport on the initial room render too.
-    // Previously this only happened after a later room update (for example Shuffle).
-    renderPrivateList();
     updateVideoListScrollState();
     if(state.isHost&&state.room.current_video_id)ensureYouTubePlayer();
     loadAnnouncement();
@@ -725,7 +717,6 @@
       bindDragAndDrop(document);
     }
     updateEndPreview();
-    renderPrivateList();
     updateVideoListScrollState();
     bindMobilePinchCollapse();
     updatePeopleUI();
@@ -1149,7 +1140,7 @@
 
   function bindRoomControls(){
     const leaveBtn=document.getElementById('leaveRoom');if(leaveBtn)leaveBtn.onclick=leaveRoom;
-    document.getElementById('togglePrivate').onclick=()=>toggleListSection('private');document.getElementById('toggleShared').onclick=()=>toggleListSection('shared');document.getElementById('add').onclick=addLink;document.getElementById('shuffle').onclick=shuffleQueue;const privateAddBtn=document.getElementById('privateAdd'); if(privateAddBtn) privateAddBtn.onclick=(e)=>{e.preventDefault();addPrivateInput();};document.getElementById('privateSelectAll').onclick=selectAllPrivate;const storedListsBtn=document.getElementById('storedLists');if(storedListsBtn)storedListsBtn.onclick=openStoredLists;document.getElementById('uploadSelected').onclick=()=>sharePrivatePlaylists(false);document.getElementById('uploadAll').onclick=()=>sharePrivatePlaylists(true);document.getElementById('prev').onclick=()=>sendCommand('previous');document.getElementById('next').onclick=()=>sendCommand('next');document.getElementById('play').onclick=()=>sendCommand(state.room.is_playing?'pause':'play');document.getElementById('showQr').onclick=showQrModal;const chatSend=document.getElementById('roomChatSend');if(chatSend)chatSend.onclick=sendChat;const chatInput=document.getElementById('roomChatInput');if(chatInput)chatInput.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}});document.querySelectorAll('[data-emoji]').forEach(b=>b.onclick=()=>addEmoji(b.dataset.emoji));bindPointButtons();renderChatMessages();const fs=document.getElementById('fullscreenBtn');if(fs)fs.onclick=togglePlayerFullscreen;const guestNextToggle=document.getElementById('guestNextUpToggle');if(guestNextToggle)guestNextToggle.onclick=()=>{const panel=document.getElementById('guestNextUpPanel');if(!panel)return;const open=panel.hidden;panel.hidden=!open;guestNextToggle.setAttribute('aria-expanded',open?'true':'false');guestNextToggle.innerHTML=open?'HIDE <span>⌃</span>':'NEXT UP <span>⌄</span>';if(open)updateEndPreview();};const previewTab=document.getElementById('endPreviewTab');if(previewTab)previewTab.onclick=()=>{const open=document.getElementById('endPreview')?.classList.contains('show');if(open)hideEndPreview();else{state.endPreviewItems=null;updateEndPreview();setEndPreviewOpen(true,false);}};const vol=document.getElementById('volume');if(vol){vol.value=String(state.hostVolume);vol.oninput=()=>{const v=Math.max(0,Math.min(100,Number(vol.value)||0));applyHostVolume(v);broadcast('volume',{from:state.me.id,targetHostId:state.room.host_id,volume:v}).catch(()=>{});};}
+    document.getElementById('toggleShared').onclick=()=>toggleListSection('shared');document.getElementById('add').onclick=addLink;document.getElementById('shuffle').onclick=shuffleQueue;const createPlaylistBtn=document.getElementById('createRoomPlaylist');if(createPlaylistBtn)createPlaylistBtn.onclick=promptCreateRoomPlaylist;document.getElementById('prev').onclick=()=>sendCommand('previous');document.getElementById('next').onclick=()=>sendCommand('next');document.getElementById('play').onclick=()=>sendCommand(state.room.is_playing?'pause':'play');document.getElementById('showQr').onclick=showQrModal;const chatSend=document.getElementById('roomChatSend');if(chatSend)chatSend.onclick=sendChat;const chatInput=document.getElementById('roomChatInput');if(chatInput)chatInput.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}});document.querySelectorAll('[data-emoji]').forEach(b=>b.onclick=()=>addEmoji(b.dataset.emoji));bindPointButtons();renderChatMessages();const fs=document.getElementById('fullscreenBtn');if(fs)fs.onclick=togglePlayerFullscreen;const guestNextToggle=document.getElementById('guestNextUpToggle');if(guestNextToggle)guestNextToggle.onclick=()=>{const panel=document.getElementById('guestNextUpPanel');if(!panel)return;const open=panel.hidden;panel.hidden=!open;guestNextToggle.setAttribute('aria-expanded',open?'true':'false');guestNextToggle.innerHTML=open?'HIDE <span>⌃</span>':'NEXT UP <span>⌄</span>';if(open)updateEndPreview();};const previewTab=document.getElementById('endPreviewTab');if(previewTab)previewTab.onclick=()=>{const open=document.getElementById('endPreview')?.classList.contains('show');if(open)hideEndPreview();else{state.endPreviewItems=null;updateEndPreview();setEndPreviewOpen(true,false);}};const vol=document.getElementById('volume');if(vol){vol.value=String(state.hostVolume);vol.oninput=()=>{const v=Math.max(0,Math.min(100,Number(vol.value)||0));applyHostVolume(v);broadcast('volume',{from:state.me.id,targetHostId:state.room.host_id,volume:v}).catch(()=>{});};}
     document.getElementById('url').addEventListener('keydown',e=>{if(e.key==='Enter')addLink();});
     document.getElementById('privateUrl').addEventListener('keydown',e=>{if(e.key==='Enter')addPrivateInput();});
     const roomSearchButton=document.getElementById('roomSearchButton');if(roomSearchButton)roomSearchButton.onclick=runRoomSearch;
@@ -1203,8 +1194,8 @@
     if(showErrors===true&&document.getElementById('roomSearchResults')&&state.searchResults.length)renderRoomSearchResults();
   }
   function renderSharedPlaylistCardsHtml(){
-    if(!state.sharedPlaylists.length)return '<div class="empty">No shared playlists yet. Share a playlist from My List to add the first card.</div>';
-    return state.sharedPlaylists.map(p=>'<button type="button" class="shared-playlist-card" data-shared-playlist="'+esc(p.id)+'"><span class="shared-playlist-art"><img src="'+esc(p.items[0]?.thumbnail||ytThumb(p.items[0]?.video_id||''))+'" alt=""></span><span class="shared-playlist-copy"><strong>'+esc(p.name)+'</strong><span>'+p.items.length+' song'+(p.items.length===1?'':'s')+' · '+esc(p.created_by_name||'Room member')+'</span></span><span class="shared-playlist-open">Open →</span></button>').join('');
+    if(!state.sharedPlaylists.length)return '<div class="empty">No shared playlists yet. Create the first playlist.</div>';
+    return state.sharedPlaylists.map(p=>'<button type="button" class="shared-playlist-card" data-shared-playlist="'+esc(p.id)+'"><span class="shared-playlist-art"><img src="'+esc(p.items[0]?.thumbnail||ytThumb(p.items[0]?.video_id||''))+'" alt=""></span><span class="shared-playlist-copy"><strong>'+esc(p.name)+'</strong><span>'+p.items.length+' song'+(p.items.length===1?'':'s')+' · '+esc(p.created_by_name||'Room member')+'</span></span><span class="shared-playlist-open">View playlist →</span></button>').join('');
   }
   function renderSharedPlaylistCards(){
     const box=document.getElementById('sharedPlaylistCards');if(!box)return;
@@ -1212,20 +1203,46 @@
     const count=document.querySelector('.shared-library-section .section-count');if(count)count.textContent='('+state.sharedPlaylists.length+')';
   }
   function bindSharedPlaylistCards(){
-    document.querySelectorAll('[data-shared-playlist]').forEach(b=>{if(b.dataset.bound==='1')return;b.dataset.bound='1';b.onclick=()=>loadRoomPlaylistIntoPrivate(b.dataset.sharedPlaylist);});
+    document.querySelectorAll('[data-shared-playlist]').forEach(b=>{if(b.dataset.bound==='1')return;b.dataset.bound='1';b.onclick=()=>openRoomPlaylist(b.dataset.sharedPlaylist);});
   }
-  function loadRoomPlaylistIntoPrivate(id){
+  function openRoomPlaylist(id){
     const playlist=state.sharedPlaylists.find(p=>p.id===id);if(!playlist)return;
-    const existing=new Set(state.privateList.map(x=>x.video_id)),added=[];
-    playlist.items.forEach(x=>{if(!x.video_id||existing.has(x.video_id))return;existing.add(x.video_id);added.push({id:privateItemId(),video_id:x.video_id,title:x.title||'YouTube video',thumbnail:x.thumbnail||ytThumb(x.video_id),selected:false,playlist_id:'shared-'+playlist.id,playlist_title:playlist.name});});
-    if(!added.length)return notify('All songs from this playlist are already in My List.','info');
-    state.privateList.push(...added);state.privateCollapsed=false;savePrivateList();renderPrivateList();updateListSectionUI();
-    document.getElementById('privateBody')?.scrollIntoView({behavior:'smooth',block:'start'});
-    notify('Loaded '+added.length+' song'+(added.length===1?'':'s')+' from “'+playlist.name+'” into My List.');
+    const back=document.createElement('div');back.className='modalback';
+    const rows=playlist.items.map((x,i)=>'<div class="room-playlist-song"><img src="'+esc(x.thumbnail||ytThumb(x.video_id))+'" alt=""><div class="min0"><strong>'+esc(x.title||'YouTube video')+'</strong><span class="small">Track '+(i+1)+'</span></div><button class="btn green" data-room-play="'+esc(x.video_id)+'">Add to Shared Queue</button></div>').join('');
+    back.innerHTML='<div class="modal room-playlist-modal"><div class="brand">ALAMKAROK</div><h2>'+esc(playlist.name)+'</h2><p class="sub">'+playlist.items.length+' songs · Shared by '+esc(playlist.created_by_name||'Room member')+'</p><div class="room-playlist-songs">'+(rows||'<div class="empty">This playlist is empty. Use Add to Playlist from search to add songs.</div>')+'</div><div class="modalactions"><button class="btn primary" data-close-playlist>Close</button></div></div>';
+    document.body.appendChild(back);
+    back.querySelector('[data-close-playlist]').onclick=()=>back.remove();
+    back.querySelectorAll('[data-room-play]').forEach(b=>b.onclick=()=>addPlaylistSongToQueue(playlist,b.dataset.roomPlay));
+  }
+  function promptCreateRoomPlaylist(){const name=window.prompt('Name this shared playlist:','New Playlist');if(name&&name.trim())createRoomPlaylist(name.trim());}
+  async function createRoomPlaylist(name){
+    try{const r=await getClient().from('room_playlists').insert({room_id:state.room.id,name:name.trim(),created_by:state.me.id,created_by_name:state.me.name}).select().single();if(r.error)throw r.error;await refreshSharedPlaylists();await broadcast('shared_playlists',{roomId:state.room.id});notify('Created playlist “'+name.trim()+'”.');}
+    catch(e){notify(e.message||'Could not create playlist.','error');}
+  }
+  function openAddToPlaylist(videoId){
+    const item=state.searchResults.find(x=>x.video_id===videoId);if(!item)return;
+    const back=document.createElement('div');back.className='modalback';
+    const choices=state.sharedPlaylists.map(p=>'<button class="room-playlist-choice" data-add-playlist="'+esc(p.id)+'"><strong>'+esc(p.name)+'</strong><span>'+p.items.length+' songs</span></button>').join('');
+    back.innerHTML='<div class="modal room-playlist-modal"><div class="brand">ALAMKAROK</div><h2>Add to Playlist</h2><p class="sub">'+esc(item.title)+'</p><div class="room-playlist-choices">'+(choices||'<div class="empty">No playlists yet. Create one first.</div>')+'</div><div class="modalactions"><button class="btn" data-create-playlist>+ Create Playlist</button><button class="btn primary" data-close-playlist>Cancel</button></div></div>';
+    document.body.appendChild(back);
+    back.querySelector('[data-close-playlist]').onclick=()=>back.remove();
+    back.querySelector('[data-create-playlist]').onclick=async()=>{back.remove();const name=window.prompt('Name the new shared playlist:','New Playlist');if(name&&name.trim()){await createRoomPlaylist(name.trim());const p=state.sharedPlaylists.find(x=>x.name===name.trim());if(p)await addSongToRoomPlaylist(p,item);}};
+    back.querySelectorAll('[data-add-playlist]').forEach(b=>b.onclick=async()=>{const p=state.sharedPlaylists.find(x=>x.id===b.dataset.addPlaylist);if(p){await addSongToRoomPlaylist(p,item);back.remove();}});
+  }
+  async function addSongToRoomPlaylist(playlist,item){
+    if(playlist.items.some(x=>x.video_id===item.video_id))return notify('That song is already in “'+playlist.name+'”.','info');
+    try{const r=await getClient().from('room_playlist_items').insert({room_id:state.room.id,playlist_id:playlist.id,video_id:item.video_id,title:item.title||'YouTube video',thumbnail:item.thumbnail||ytThumb(item.video_id),position:playlist.items.length,added_by:state.me.id});if(r.error)throw r.error;await refreshSharedPlaylists();await broadcast('shared_playlists',{roomId:state.room.id});notify('Added to “'+playlist.name+'”.');}
+    catch(e){notify(e.message||'Could not add song to playlist.','error');}
+  }
+  async function addPlaylistSongToQueue(playlist,videoId){
+    const item=playlist.items.find(x=>x.video_id===videoId);if(!item)return;
+    if(state.queue.some(x=>x.video_id===videoId))return notify('This video is already in the Shared Queue.','info');
+    try{const position=state.queue.length?Math.max(...state.queue.map(x=>x.position))+1:0;const r=await getClient().from('queue_items').insert({room_id:state.room.id,video_id:item.video_id,title:item.title||'YouTube video',thumbnail:item.thumbnail||ytThumb(item.video_id),added_by:state.me.id,position}).select().single();if(r.error)throw r.error;await refreshQueue();await broadcast('queue',{queue:state.queue});if(state.isHost&&!state.room.current_video_id)await performPlayback('load',videoId,0,true);notify('Added to Shared Queue.');}
+    catch(e){notify(e.message||'Could not add this song.','error');}
   }
   function bindRoomSearchResults(){
     const box=document.getElementById('roomSearchResults');if(!box||box.dataset.bound==='1')return;box.dataset.bound='1';
-    box.addEventListener('click',e=>{const b=e.target.closest('[data-search-add]');if(b)addSearchResultToQueue(b.dataset.searchAdd);});
+    box.addEventListener('click',e=>{const b=e.target.closest('[data-search-add]');if(b)openAddToPlaylist(b.dataset.searchAdd);});
   }
   function normalizeSearchText(value){return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();}
   function editDistance(a,b){
@@ -1252,7 +1269,7 @@
   function renderRoomSearchResults(){
     const box=document.getElementById('roomSearchResults');if(!box)return;
     if(!state.searchResults.length){box.innerHTML='<div class="empty">No matching songs found. Try a shorter search or check the spelling.</div>';return;}
-    box.innerHTML=state.searchResults.map(x=>'<div class="room-search-result"><img class="room-search-thumb" src="'+esc(x.thumbnail||ytThumb(x.video_id))+'" alt=""><div class="room-search-copy"><strong>'+esc(x.title||'YouTube video')+'</strong><span>'+esc(x.playlist_name||'Shared playlist')+'</span></div><button type="button" class="btn green room-search-add" data-search-add="'+esc(x.video_id)+'">Add to Shared Queue</button></div>').join('');
+    box.innerHTML=state.searchResults.map(x=>'<div class="room-search-result"><img class="room-search-thumb" src="'+esc(x.thumbnail||ytThumb(x.video_id))+'" alt=""><div class="room-search-copy"><strong>'+esc(x.title||'YouTube video')+'</strong><span>'+esc(x.playlist_name||'Shared playlist')+'</span></div><button type="button" class="btn green room-search-add" data-search-add="'+esc(x.video_id)+'">Add to Playlist</button></div>').join('');
     bindRoomSearchResults();
   }
   async function addSearchResultToQueue(videoId){
