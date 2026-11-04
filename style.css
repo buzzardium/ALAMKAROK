@@ -2015,3 +2015,16 @@ html.tv-mode .btn,html.tv-mode input,html.tv-mode select{font-size:17px}
 html.tv-mode .qitem,html.tv-mode .private-item,html.tv-mode .guest-next-up-toggle{cursor:pointer}
 html.tv-mode .qitem:focus-visible,html.tv-mode .private-item:focus-visible{border-color:#69d4ff!important;background:rgba(54,120,180,.22)!important}
 html.tv-mode{scroll-behavior:smooth}
+
+
+/* Shared playlist library and fuzzy room search */
+.shared-playlist-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+.shared-playlist-card{display:grid;grid-template-columns:76px minmax(0,1fr);gap:12px;align-items:center;width:100%;padding:10px;border:1px solid var(--line,rgba(255,255,255,.12));border-radius:14px;background:rgba(255,255,255,.035);color:var(--text);text-align:left;cursor:pointer;transition:background .15s,border-color .15s}
+.shared-playlist-card:hover,.shared-playlist-card:focus-visible{background:rgba(105,160,255,.12);border-color:rgba(105,160,255,.55)}
+.shared-playlist-art{width:76px;height:66px;overflow:hidden;border-radius:9px;background:#111827}.shared-playlist-art img{width:100%;height:100%;object-fit:cover}
+.shared-playlist-copy{display:grid;gap:5px;min-width:0}.shared-playlist-copy strong{font-size:14px;line-height:1.3;overflow-wrap:anywhere}.shared-playlist-copy span{font-size:11px;color:var(--muted);overflow-wrap:anywhere}.shared-playlist-open{grid-column:2;font-size:11px;font-weight:800;color:var(--accent,#79baff)}
+.room-search-results{display:grid;gap:9px;margin-top:12px}.room-search-result{display:grid;grid-template-columns:112px minmax(0,1fr) auto;gap:12px;align-items:center;padding:9px;border:1px solid rgba(255,255,255,.09);border-radius:12px;background:rgba(255,255,255,.025)}
+.room-search-thumb{width:112px;aspect-ratio:16/9;object-fit:cover;border-radius:8px;background:#111827}.room-search-copy{display:grid;gap:5px;min-width:0}.room-search-copy strong{font-size:13px;line-height:1.35;overflow-wrap:anywhere}.room-search-copy span{font-size:11px;color:var(--muted);overflow-wrap:anywhere}.room-search-add{white-space:nowrap}
+@media(max-width:620px){.room-search-result{grid-template-columns:88px minmax(0,1fr);gap:9px}.room-search-thumb{width:88px}.room-search-add{grid-column:2;justify-self:start}.shared-playlist-grid{grid-template-columns:1fr}}
+@media(min-width:621px) and (max-width:900px){.room-search-result{grid-template-columns:96px minmax(0,1fr)}.room-search-thumb{width:96px}.room-search-add{grid-column:2;justify-self:start}}
+html.tv-mode .shared-playlist-card,html.tv-mode .room-search-add{min-height:60px}
